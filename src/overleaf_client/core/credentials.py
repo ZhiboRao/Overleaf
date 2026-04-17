@@ -14,6 +14,7 @@ UI 流程始终可用。
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from dataclasses import dataclass
 
@@ -28,7 +29,7 @@ _USERNAME_ANCHOR_KEY = "__last_username__"
 
 @dataclass(frozen=True)
 class Credential:
-    """A (username, password) pair. / 账号密码组合。"""
+    """A (username, password) pair / 账号密码组合."""
 
     username: str
     password: str
@@ -116,14 +117,10 @@ class CredentialStore:
                 self._service, _USERNAME_ANCHOR_KEY,
             )
             if user:
-                try:
+                with contextlib.suppress(KeyringError):
                     keyring.delete_password(self._service, user)
-                except KeyringError:
-                    pass
-            try:
+            with contextlib.suppress(KeyringError):
                 keyring.delete_password(self._service, _USERNAME_ANCHOR_KEY)
-            except KeyringError:
-                pass
         except KeyringError as exc:
             _LOGGER.warning("Unable to delete from keychain: %s", exc)
             return False

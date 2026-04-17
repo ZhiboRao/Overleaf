@@ -61,14 +61,14 @@ class NetworkMonitor(QObject):
         self._timer_id: int = 0
 
     def start(self) -> None:
-        """Begin periodic probing. / 开始周期性探测。"""
+        """Begin periodic probing / 开始周期性探测."""
         if self._timer_id:
             return
         self._probe()
         self._timer_id = self.startTimer(self._interval)
 
     def stop(self) -> None:
-        """Stop probing. / 停止探测。"""
+        """Stop probing / 停止探测."""
         if self._timer_id:
             self.killTimer(self._timer_id)
             self._timer_id = 0

@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import sys
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
@@ -90,12 +90,12 @@ class ConfigManager:
 
     @property
     def config(self) -> AppConfig:
-        """The current :class:`AppConfig` instance. / 当前配置对象。"""
+        """Return the current :class:`AppConfig` / 返回当前配置对象."""
         return self._config
 
     @property
     def support_dir(self) -> Path:
-        """Application support directory. / 应用数据目录。"""
+        """Return the application support directory / 返回应用数据目录."""
         return self._support_dir
 
     @property
@@ -138,7 +138,11 @@ class ConfigManager:
             return cfg
         try:
             raw = json.loads(self._config_path.read_text("utf-8"))
-            known = {f: raw[f] for f in AppConfig.__dataclass_fields__ if f in raw}
+            known = {
+                f: raw[f]
+                for f in AppConfig.__dataclass_fields__
+                if f in raw
+            }
             return AppConfig(**known)
         except (OSError, json.JSONDecodeError, TypeError) as exc:
             _LOGGER.warning(

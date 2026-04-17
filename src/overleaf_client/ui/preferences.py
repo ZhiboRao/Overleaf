@@ -12,13 +12,13 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
     QDialogButtonBox,
+    QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
     QHBoxLayout,
     QLineEdit,
     QPushButton,
     QVBoxLayout,
-    QDoubleSpinBox,
     QWidget,
 )
 

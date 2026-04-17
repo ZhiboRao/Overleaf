@@ -66,8 +66,10 @@ LOGIN_AUTOFILL_JS_TEMPLATE = r"""
     // 仅在空字段上填充，避免覆盖用户输入。
     if (!email.value) { email.value = %(email)s; email.dispatchEvent(
         new Event('input', { bubbles: true })); }
-    if (!password.value) { password.value = %(password)s; password.dispatchEvent(
-        new Event('input', { bubbles: true })); }
+    if (!password.value) {
+        password.value = %(password)s;
+        password.dispatchEvent(new Event('input', { bubbles: true }));
+    }
     return true;
 })();
 """

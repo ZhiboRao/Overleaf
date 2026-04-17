@@ -77,7 +77,10 @@ class OverleafProfile(QWebEngineProfile):
             QWebEngineProfile.PersistentCookiesPolicy.ForcePersistentCookies,
         )
         self.setHttpUserAgent(build_user_agent())
-        self.setSpellCheckEnabled(True)
+        # Overleaf ships its own spellchecker; leave Qt's off to avoid
+        # noisy "qtwebengine_dictionaries not found" warnings.
+        # Overleaf 自带拼写检查；这里关闭 Qt 的以避免缺字典时的噪音日志。
+        self.setSpellCheckEnabled(False)
 
         settings = self.settings()
         for attr in (

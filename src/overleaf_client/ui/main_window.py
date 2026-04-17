@@ -19,7 +19,6 @@ from PySide6.QtWidgets import (
     QStatusBar,
     QSystemTrayIcon,
     QToolBar,
-    QWidget,
 )
 
 from overleaf_client import APP_NAME
@@ -160,7 +159,7 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def download_pdf(self) -> None:
-        """Trigger Overleaf's "Download PDF" action. / 触发「下载 PDF」。"""
+        """Trigger Overleaf's "Download PDF" action / 触发「下载 PDF」."""
         self._page.runJavaScript(DOWNLOAD_PDF_JS)
 
     # ------------------------------------------------------------- Callbacks
@@ -253,7 +252,7 @@ class MainWindow(QMainWindow):
             )
 
     def open_preferences(self) -> None:
-        """Show the preferences dialog. / 打开偏好设置对话框。"""
+        """Show the preferences dialog / 打开偏好设置对话框."""
         dlg = PreferencesDialog(
             self._config_manager, self._credential_store, parent=self,
         )
@@ -262,5 +261,5 @@ class MainWindow(QMainWindow):
 
     # --------------------------------------------------------------- Qt hooks
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
-        """Persist window state then accept. / 保存窗口状态后关闭。"""
+        """Persist window state then accept / 保存窗口状态后关闭."""
         event.accept()
