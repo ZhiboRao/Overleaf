@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from urllib.parse import urlparse, urlunparse
 
 from PySide6.QtCore import QObject, QUrl, Signal, Slot
 from PySide6.QtWebEngineCore import (
@@ -26,7 +27,7 @@ from PySide6.QtWebEngineCore import (
 )
 
 from overleaf_client import APP_NAME, __version__
-from overleaf_client.core.config import ConfigManager
+from overleaf_client.core.config import AppConfig, ConfigManager
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -46,6 +47,52 @@ def build_user_agent() -> str:
         "Chrome/124.0.0.0 Safari/537.36 "
         f"{APP_NAME.replace(' ', '')}/{__version__}"
     )
+
+
+# cn.overleaf.com is a Chinese-only mirror; www.overleaf.com is English.
+# Accept-Language can't flip cn's UI, so the language preference instead
+# picks which mirror to visit. Hosts that aren't one of these two are
+# treated as self-hosted and left alone.
+# cn.overleaf.com 只提供中文，www.overleaf.com 默认英文；Accept-Language
+# 改不了 cn 站，因此语言选项改为切换 host。非这两个 host 视为自建实例，
+# 保持原样。
+_CANONICAL_HOSTS: frozenset[str] = frozenset({
+    "cn.overleaf.com", "www.overleaf.com", "overleaf.com",
+})
+_HOST_FOR_LANG: dict[str, str] = {
+    "en": "www.overleaf.com",
+    "zh": "cn.overleaf.com",
+}
+
+
+def localized_url(url: str, ui_language: str) -> str:
+    """Return ``url`` with its host swapped to match ``ui_language``.
+
+    根据 ``ui_language`` 将 ``url`` 的 host 切换到对应的 Overleaf 镜像。
+
+    Non-Overleaf URLs and ``"auto"`` (or any unknown language code) are
+    returned unchanged, so self-hosted deployments are not disturbed.
+    非 Overleaf 域名及 ``"auto"`` 原样返回，以免影响自建实例。
+    """
+    target_host = _HOST_FOR_LANG.get(ui_language)
+    if target_host is None:
+        return url
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    if host not in _CANONICAL_HOSTS:
+        return url
+    netloc = (
+        f"{target_host}:{parsed.port}" if parsed.port else target_host
+    )
+    return urlunparse(parsed._replace(netloc=netloc))
+
+
+def localized_home_url(cfg: AppConfig) -> str:
+    """Return the effective home URL for the current language choice.
+
+    返回当前语言设置对应的首页地址。
+    """
+    return localized_url(cfg.home_url, cfg.ui_language)
 
 
 class OverleafProfile(QWebEngineProfile):

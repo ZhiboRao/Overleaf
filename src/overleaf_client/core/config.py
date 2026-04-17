@@ -57,6 +57,11 @@ class AppConfig:
             the system keychain.
         download_dir: Default download directory for PDFs/artifacts. If
             ``None``, falls back to ``~/Downloads``.
+        ui_language: Preferred Overleaf deployment. ``"zh"`` routes to
+            ``cn.overleaf.com`` (the Chinese-language site, typically
+            faster in mainland China); ``"en"`` routes to
+            ``www.overleaf.com`` (English). ``"auto"`` uses ``home_url``
+            unchanged so self-hosted deployments keep working.
     """
 
     home_url: str = DEFAULT_HOME_URL
@@ -65,6 +70,7 @@ class AppConfig:
     enable_dock_badge: bool = True
     autosave_credentials: bool = True
     download_dir: str | None = None
+    ui_language: str = "auto"
 
 
 class ConfigManager:

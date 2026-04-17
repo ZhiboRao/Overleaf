@@ -22,7 +22,12 @@ from PySide6.QtWidgets import (
 )
 
 from overleaf_client import APP_NAME
-from overleaf_client.core.browser import OverleafPage, OverleafProfile
+from overleaf_client.core.browser import (
+    OverleafPage,
+    OverleafProfile,
+    localized_home_url,
+    localized_url,
+)
 from overleaf_client.core.config import ConfigManager
 from overleaf_client.core.credentials import Credential, CredentialStore
 from overleaf_client.core.network import NetworkMonitor
@@ -96,7 +101,7 @@ class MainWindow(QMainWindow):
         self._view.urlChanged.connect(self._on_url_changed)
         self._view.titleChanged.connect(self._on_title_changed)
 
-        self._view.load(QUrl(config_manager.config.home_url))
+        self._view.load(QUrl(localized_home_url(config_manager.config)))
 
     # ---------------------------------------------------------------- Toolbar
     def _build_toolbar(self) -> QToolBar:
@@ -136,7 +141,7 @@ class MainWindow(QMainWindow):
         self._view.forward()
 
     def _go_home(self) -> None:
-        self._view.load(QUrl(self._config_manager.config.home_url))
+        self._view.load(QUrl(localized_home_url(self._config_manager.config)))
 
     # ------------------------------------------------------------- Callbacks
     @Slot(bool)
@@ -232,8 +237,20 @@ class MainWindow(QMainWindow):
         dlg = PreferencesDialog(
             self._config_manager, self._credential_store, parent=self,
         )
+        prev_language = self._config_manager.config.ui_language
         if dlg.exec() == PreferencesDialog.DialogCode.Accepted:
-            self._view.setZoomFactor(self._config_manager.config.zoom_factor)
+            cfg = self._config_manager.config
+            self._view.setZoomFactor(cfg.zoom_factor)
+            if cfg.ui_language != prev_language:
+                # Rewrite the current page's host so the user lands on the
+                # matching Overleaf mirror (cn ↔ www). Login cookies are
+                # per-domain, so a re-login on the other mirror is expected.
+                # 切换语言时，把当前地址换到对应镜像（cn ↔ www）。登录
+                # cookie 按域名隔离，换站后通常需要重新登录。
+                target = localized_url(
+                    self._view.url().toString(), cfg.ui_language,
+                )
+                self._view.load(QUrl(target))
 
     # --------------------------------------------------------------- Qt hooks
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802

@@ -10,6 +10,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QDoubleSpinBox,
@@ -60,6 +61,27 @@ class PreferencesDialog(QDialog):
         self._zoom.setDecimals(2)
         self._zoom.setValue(cfg.zoom_factor)
 
+        # The language choice also picks which Overleaf mirror to visit:
+        #   zh → cn.overleaf.com (Chinese; usually faster in China)
+        #   en → www.overleaf.com (English)
+        #   auto → use Home URL unchanged (for self-hosted instances).
+        # 语言选项同时决定访问哪个 Overleaf 镜像：zh → cn.overleaf.com；
+        # en → www.overleaf.com；auto → 使用上方 Home URL（自建实例）。
+        self._language_choices: list[tuple[str, str]] = [
+            ("auto", "Auto (use Home URL) / 自动（按首页地址）"),
+            ("en", "English — www.overleaf.com"),
+            ("zh", "中文 — cn.overleaf.com"),
+        ]
+        self._language = QComboBox()
+        for value, label in self._language_choices:
+            self._language.addItem(label, value)
+        current_idx = next(
+            (i for i, (v, _) in enumerate(self._language_choices)
+             if v == cfg.ui_language),
+            0,
+        )
+        self._language.setCurrentIndex(current_idx)
+
         self._notifications = QCheckBox(
             "Enable system notifications / 启用系统通知",
         )
@@ -89,6 +111,7 @@ class PreferencesDialog(QDialog):
         form = QFormLayout()
         form.addRow("Home URL / 首页地址:", self._home_url)
         form.addRow("Zoom factor / 缩放比例:", self._zoom)
+        form.addRow("Language / 语言:", self._language)
         form.addRow(self._notifications)
         form.addRow(self._dock_badge)
         form.addRow(self._autosave_creds)
@@ -127,5 +150,6 @@ class PreferencesDialog(QDialog):
             enable_dock_badge=self._dock_badge.isChecked(),
             autosave_credentials=self._autosave_creds.isChecked(),
             download_dir=self._download_dir.text().strip() or None,
+            ui_language=self._language.currentData() or "auto",
         )
         self.accept()
