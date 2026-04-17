@@ -46,6 +46,9 @@ lint: install-dev
 	$(VENV)/bin/mypy src
 
 icon:
+	$(PY) -m pip install --quiet 'Pillow>=10.0'
+	$(PY) scripts/make_app_icon.py
+	cp resources/icon.png src/overleaf_client/resources/icon.png
 	$(PY) scripts/build_icon.py
 
 app: icon install-dev
