@@ -1,0 +1,85 @@
+# pyproject.toml - packaging & tooling metadata.
+# 打包与工具链元数据。
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "overleaf-client"
+version = "0.1.0"
+description = "Unofficial native macOS desktop client for Overleaf (cn.overleaf.com)."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+authors = [{ name = "ZhiboRao" }]
+keywords = ["overleaf", "latex", "desktop", "macos", "qt", "pyside6"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: MacOS X",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS :: MacOS X",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Text Processing :: Markup :: LaTeX",
+]
+
+dependencies = [
+    "PySide6>=6.6,<7",
+    "keyring>=24",
+]
+
+[project.optional-dependencies]
+mac = [
+    "pyobjc-framework-Cocoa>=10.0; sys_platform == 'darwin'",
+]
+build = [
+    "py2app>=0.28; sys_platform == 'darwin'",
+    "Pillow>=10.0",
+]
+dev = [
+    "ruff>=0.5",
+    "mypy>=1.10",
+    "pytest>=8.0",
+]
+
+[project.scripts]
+overleaf-client = "overleaf_client.app:main"
+
+[project.urls]
+Homepage = "https://github.com/ZhiboRao/Overleaf"
+Issues = "https://github.com/ZhiboRao/Overleaf/issues"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"overleaf_client" = ["resources/*"]
+
+# Ruff - aligned roughly with Google Python style (4-space indent, 80 cols).
+# 代码风格参考 Google Python 规范（4 空格缩进，80 列）。
+[tool.ruff]
+line-length = 80
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "W", "I", "N", "UP", "B", "C4", "SIM", "D",
+]
+ignore = [
+    "D104", # missing docstring in public package (__init__ allowed blank)
+    "D203", # one-blank-line-before-class (conflicts with D211)
+    "D213", # multi-line-summary-second-line (conflicts with D212)
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_unused_ignores = true

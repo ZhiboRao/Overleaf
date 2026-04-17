@@ -1,0 +1,122 @@
+"""Native macOS menu bar builder.
+
+原生 macOS 菜单栏构造器。
+
+Keeping menu construction separate from the window means any future
+window type (preferences-only, secondary project window, etc.) can share
+the same top-level menu without duplicating code.
+
+将菜单构造与窗口实现解耦，便于未来的其他窗口（例如仅偏好设置窗口、
+次级项目窗口）复用同一顶层菜单，避免重复代码。
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+
+from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtWidgets import QMenuBar
+
+from overleaf_client import APP_NAME
+
+
+def _make_action(
+    parent: QMenuBar, text: str, shortcut: QKeySequence | str | None,
+    handler: Callable[[], None],
+) -> QAction:
+    action = QAction(text, parent)
+    if shortcut is not None:
+        action.setShortcut(
+            shortcut if isinstance(shortcut, QKeySequence)
+            else QKeySequence(shortcut),
+        )
+    action.triggered.connect(handler)
+    return action
+
+
+def build_menu_bar(
+    menu_bar: QMenuBar,
+    *,
+    on_new_project: Callable[[], None],
+    on_open_preferences: Callable[[], None],
+    on_recompile: Callable[[], None],
+    on_download_pdf: Callable[[], None],
+    on_reload: Callable[[], None],
+    on_toggle_fullscreen: Callable[[], None],
+    on_save_credentials: Callable[[], None],
+    on_about: Callable[[], None],
+    on_quit: Callable[[], None],
+) -> None:
+    """Populate ``menu_bar`` with the application's top-level menus.
+
+    将应用顶级菜单填充到 ``menu_bar``。
+
+    Args:
+        menu_bar: The :class:`QMenuBar` instance to populate (usually the
+            shared menu bar when ``setMenuBar`` is not used on macOS).
+        on_new_project: "File > New Project" handler.
+        on_open_preferences: "Overleaf > Preferences…" handler.
+        on_recompile: "Project > Recompile" handler.
+        on_download_pdf: "Project > Download PDF" handler.
+        on_reload: "View > Reload" handler.
+        on_toggle_fullscreen: "View > Enter Full Screen" handler.
+        on_save_credentials: "Account > Save Login…" handler.
+        on_about: "Help > About" handler.
+        on_quit: "Overleaf > Quit" handler.
+    """
+    menu_bar.clear()
+
+    # --- App menu (macOS auto-positions items labelled "Preferences"/"About"
+    # / "Quit" into the canonical locations regardless of which menu they
+    # live under). 显式菜单命名便于非 macOS 平台同样可见。
+    app_menu = menu_bar.addMenu(APP_NAME)
+    app_menu.addAction(_make_action(
+        menu_bar, "About / 关于", None, on_about,
+    ))
+    app_menu.addSeparator()
+    prefs = _make_action(
+        menu_bar, "Preferences… / 偏好设置…",
+        QKeySequence.StandardKey.Preferences, on_open_preferences,
+    )
+    prefs.setMenuRole(QAction.MenuRole.PreferencesRole)
+    app_menu.addAction(prefs)
+    app_menu.addSeparator()
+    quit_act = _make_action(
+        menu_bar, "Quit / 退出",
+        QKeySequence.StandardKey.Quit, on_quit,
+    )
+    quit_act.setMenuRole(QAction.MenuRole.QuitRole)
+    app_menu.addAction(quit_act)
+
+    # --- File
+    file_menu = menu_bar.addMenu("File / 文件")
+    file_menu.addAction(_make_action(
+        menu_bar, "New Project / 新建项目", "Ctrl+N", on_new_project,
+    ))
+
+    # --- Project
+    proj_menu = menu_bar.addMenu("Project / 项目")
+    proj_menu.addAction(_make_action(
+        menu_bar, "Recompile / 编译", "Ctrl+S", on_recompile,
+    ))
+    proj_menu.addAction(_make_action(
+        menu_bar, "Download PDF / 下载 PDF", "Ctrl+D", on_download_pdf,
+    ))
+
+    # --- View
+    view_menu = menu_bar.addMenu("View / 视图")
+    view_menu.addAction(_make_action(
+        menu_bar, "Reload / 刷新",
+        QKeySequence.StandardKey.Refresh, on_reload,
+    ))
+    view_menu.addAction(_make_action(
+        menu_bar, "Toggle Full Screen / 全屏切换",
+        QKeySequence.StandardKey.FullScreen, on_toggle_fullscreen,
+    ))
+
+    # --- Account
+    acc_menu = menu_bar.addMenu("Account / 账户")
+    acc_menu.addAction(_make_action(
+        menu_bar, "Save Login to Keychain… / 保存登录到钥匙串…",
+        None, on_save_credentials,
+    ))

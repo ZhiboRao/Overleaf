@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+.eggs/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Virtual envs
+.venv/
+venv/
+env/
+ENV/
+
+# Build / distribution
+build/
+dist/
+*.app/
+*.dmg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# py2app intermediate
+*.pyc
+.Python
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Claude Code / agent tooling metadata
+.claude/
+
+# Local config (must not be committed)
+.env
+.env.local
+*.log
+
+# QtWebEngine local profile directory should not be committed
+user_data/

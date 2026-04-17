@@ -1,0 +1,110 @@
+# Overleaf Client
+
+An **unofficial** native macOS desktop client for [Overleaf](https://cn.overleaf.com/), built with **Python 3** and **PySide6 / QtWebEngine**.
+
+> Looking for the 中文版? See **[README.zh.md](./README.zh.md)**.
+
+---
+
+## Why
+
+Overleaf ships as a web app only. This project gives you a real Mac app — its own Dock icon, native menu bar, keyboard shortcuts, system notifications, and Keychain-backed credential storage — while still reusing the battle-tested Chromium engine under Qt so every Overleaf feature keeps working.
+
+## Features
+
+- **Persistent login** — cookies live in a QtWebEngine profile, and optional email/password autofill is stored in the **macOS Keychain** (never on disk in plaintext).
+- **Native menu bar** with standard Mac conventions:
+  - `⌘S` Recompile
+  - `⌘D` Download PDF
+  - `⌘N` New project
+  - `⌘R` Reload / `⌘,` Preferences / `⌘Q` Quit
+- **System notifications** via `osascript` (Notification Center fallback).
+- **Dock badge** (e.g. `!` when offline) via `NSApp.dockTile`.
+- **Offline detection** — probes the home URL every 30 s so captive-portal / DNS failures surface as a status bar and notification.
+- **One-click install** (`install.sh`) — venv → py2app → `/Applications`.
+- **Preferences dialog** — home URL, zoom factor, download directory, toggle notifications / Dock badge / Keychain autosave.
+- **Multi-window** support for `target="_blank"` links.
+- **Clean layered architecture** — `core/` (framework-agnostic), `ui/` (Qt), `platform/mac/` (macOS integration).
+
+## Requirements
+
+- macOS 11 (Big Sur) or newer
+- Python ≥ 3.10
+- Xcode Command Line Tools (for `sips` / `iconutil` when rebuilding the icon)
+- Optional: [`create-dmg`](https://github.com/create-dmg/create-dmg) via `brew install create-dmg` for DMG builds
+
+## Install
+
+### One-click (recommended)
+
+```bash
+git clone git@github.com:ZhiboRao/Overleaf.git
+cd Overleaf
+./install.sh
+```
+
+The script creates `.venv/`, installs all dependencies, builds the `.app` bundle, copies it to `/Applications/Overleaf Client.app`, and (if `create-dmg` is installed) produces a distributable DMG in `dist/`.
+
+### From source (for development)
+
+```bash
+make install-dev
+make run
+```
+
+### Common make targets
+
+| Target | Description |
+|---|---|
+| `make run` | Run from source against your local Python venv |
+| `make lint` | `ruff` + `mypy` |
+| `make icon` | Regenerate `resources/icon.icns` |
+| `make app` | Build the `.app` bundle only |
+| `make dmg` | Build a distributable DMG |
+| `make clean` | Remove build artifacts |
+| `make distclean` | Also delete `.venv/` |
+
+## Architecture
+
+```
+src/overleaf_client/
+├── app.py              # Composition root / entry point
+├── core/
+│   ├── config.py       # AppConfig + JSON persistence
+│   ├── credentials.py  # Keychain-backed credential store
+│   ├── network.py      # Reachability monitor (QNetworkAccessManager)
+│   └── browser.py      # QtWebEngine profile + page
+├── ui/
+│   ├── main_window.py  # QMainWindow hosting QWebEngineView
+│   ├── menu_bar.py     # Native menu construction
+│   ├── shortcuts.py    # JS snippets that drive Overleaf's DOM
+│   ├── notifications.py# osascript + QSystemTrayIcon fallback
+│   └── preferences.py  # Preferences dialog
+└── platform/mac/
+    └── dock.py         # NSApp.dockTile badge helper
+```
+
+The three layers communicate one-way downward: `app.py` owns the dependency graph; UI imports core; `platform/mac` is optional and never imported from `core/`.
+
+## Data locations
+
+| What | Where |
+|---|---|
+| JSON settings | `~/Library/Application Support/Overleaf Client/settings.json` |
+| Cookies / cache / localStorage | `~/Library/Application Support/Overleaf Client/webengine-profile/` |
+| Saved credentials | macOS Keychain, service `com.zhiborao.overleafclient` |
+| Downloads | `~/Downloads` (configurable) |
+
+## Privacy & security notes
+
+- Passwords are stored in the system Keychain via the `keyring` package — never written to disk in plaintext or transmitted beyond the HTTPS login request to Overleaf.
+- Cookies live inside QtWebEngine's sandboxed profile directory.
+- No analytics, no background phoning-home. The only network traffic is what the Overleaf site itself does, plus a periodic `HEAD` to your configured home URL for offline detection.
+
+## Disclaimer
+
+This is an **unofficial** wrapper. "Overleaf" is a trademark of Overleaf / Digital Science. This project is not affiliated with, endorsed by, or sponsored by Overleaf. You must have a valid account to use the service, and you are bound by Overleaf's own Terms of Service when using it through this client.
+
+## License
+
+[MIT](./LICENSE)
