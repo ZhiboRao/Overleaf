@@ -24,7 +24,7 @@ Overleaf ships as a web app only. This project gives you a real Mac app — its 
 - **One-click install** (`install.sh`) — venv → py2app → `/Applications`.
 - **Preferences dialog** — home URL, zoom factor, download directory, toggle notifications / Dock badge / Keychain autosave.
 - **Multi-window** support for `target="_blank"` links.
-- **Clean layered architecture** — `core/` (framework-agnostic), `ui/` (Qt), `platform/mac/` (macOS integration).
+- **Clean layered architecture** — `core/` (framework-agnostic), `ui/` (Qt), `platforms/mac/` (macOS integration).
 
 ## Requirements
 
@@ -80,11 +80,11 @@ src/overleaf_client/
 │   ├── shortcuts.py    # JS snippets that drive Overleaf's DOM
 │   ├── notifications.py# osascript + QSystemTrayIcon fallback
 │   └── preferences.py  # Preferences dialog
-└── platform/mac/
+└── platforms/mac/
     └── dock.py         # NSApp.dockTile badge helper
 ```
 
-The three layers communicate one-way downward: `app.py` owns the dependency graph; UI imports core; `platform/mac` is optional and never imported from `core/`.
+The three layers communicate one-way downward: `app.py` owns the dependency graph; UI imports core; `platforms/mac` is optional and never imported from `core/`.
 
 ## Data locations
 

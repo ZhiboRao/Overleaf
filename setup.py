@@ -14,10 +14,13 @@ Only used on macOS. Regular pip installs read metadata from
 
 from __future__ import annotations
 
+import ctypes.util
+import subprocess
 import sys
+import sysconfig
 from pathlib import Path
 
-from py2app.build_app import py2app as _Py2AppCommand
+from py2app.build_app import py2app as _py2app_command  # noqa: N812
 from setuptools import setup
 
 if sys.platform != "darwin":
@@ -32,7 +35,7 @@ if sys.platform != "darwin":
 # py2app >= 0.28 拒绝处理带 ``install_requires`` 的项目，但 setuptools
 # 会从 pyproject.toml 的 ``[project.dependencies]`` 自动填入。这里在
 # py2app 真正运行前把它清空，不影响常规 ``pip install``。
-class _Py2App(_Py2AppCommand):
+class _Py2App(_py2app_command):
     def finalize_options(self) -> None:
         self.distribution.install_requires = None
         super().finalize_options()
@@ -41,6 +44,57 @@ ROOT = Path(__file__).parent.resolve()
 ICON_ICNS = ROOT / "resources" / "icon.icns"
 
 APP = ["src/overleaf_client/__main__.py"]
+
+
+def _discover_libffi() -> list[str]:
+    """Return an absolute path list for libffi.8.dylib, or empty on miss.
+
+    返回 libffi.8.dylib 的绝对路径列表；未找到则为空。
+
+    Conda/Anaconda Pythons link _ctypes.so against ``@rpath/libffi.8.dylib``
+    but py2app does not resolve that rpath, producing "Library not loaded"
+    at launch. Bundling the dylib via the ``frameworks`` option fixes it.
+
+    Conda/Anaconda 的 _ctypes.so 通过 ``@rpath/libffi.8.dylib`` 引用
+    libffi；py2app 不会跟随 rpath 复制它，导致 .app 启动时报
+    "Library not loaded"。显式加入 ``frameworks`` 即可修复。
+    """
+    candidates: list[Path] = []
+
+    # 1) Same prefix as the Python being used to build.
+    prefix = Path(sysconfig.get_config_var("prefix") or sys.prefix)
+    candidates.append(prefix / "lib" / "libffi.8.dylib")
+
+    # 2) Shared lib resolved by ctypes.
+    found_by_ctypes = ctypes.util.find_library("ffi")
+    if found_by_ctypes:
+        candidates.append(Path(found_by_ctypes))
+
+    # 3) Well-known Homebrew locations.
+    candidates.extend([
+        Path("/opt/homebrew/opt/libffi/lib/libffi.8.dylib"),
+        Path("/usr/local/opt/libffi/lib/libffi.8.dylib"),
+    ])
+
+    # 4) Parse `otool -L` on _ctypes.so and resolve the @rpath entry.
+    try:
+        import _ctypes
+        otool = subprocess.run(
+            ["otool", "-L", _ctypes.__file__],
+            check=True, capture_output=True, text=True,
+        )
+        for line in otool.stdout.splitlines():
+            if "libffi.8.dylib" in line and "@rpath" in line:
+                # Try each rpath directory sibling of the Python prefix.
+                candidates.append(prefix / "lib" / "libffi.8.dylib")
+                break
+    except (FileNotFoundError, subprocess.CalledProcessError, ImportError):
+        pass
+
+    for c in candidates:
+        if c.is_file():
+            return [str(c.resolve())]
+    return []
 
 OPTIONS = {
     "argv_emulation": False,
@@ -62,6 +116,7 @@ OPTIONS = {
     "packages": ["overleaf_client", "PySide6"],
     "includes": ["keyring", "keyring.backends"],
     "resources": [str(ROOT / "resources")],
+    "frameworks": _discover_libffi(),
 }
 
 setup(

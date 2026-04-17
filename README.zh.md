@@ -24,7 +24,7 @@ Overleaf 只提供 Web 版，没有桌面客户端。本项目让它像一个真
 - **一键安装**（`install.sh`）：venv → py2app → 拷贝到 `/Applications`。
 - **偏好设置**：可修改首页地址、缩放比例、下载目录，并切换通知 / Dock 徽标 / 钥匙串自动保存。
 - **多窗口**：支持 `target="_blank"` 链接在应用内另开窗口。
-- **清晰分层架构**：`core/`（与 UI 无关）、`ui/`（Qt）、`platform/mac/`（macOS 集成）。
+- **清晰分层架构**：`core/`（与 UI 无关）、`ui/`（Qt）、`platforms/mac/`（macOS 集成）。
 
 ## 环境要求
 
@@ -80,11 +80,11 @@ src/overleaf_client/
 │   ├── shortcuts.py    # 注入 Overleaf DOM 的 JS 片段
 │   ├── notifications.py# osascript + 托盘通知兜底
 │   └── preferences.py  # 偏好设置对话框
-└── platform/mac/
+└── platforms/mac/
     └── dock.py         # Dock 徽标助手
 ```
 
-三层之间严格单向依赖：`app.py` 负责组装；UI 依赖 core；`platform/mac` 可选且从不被 `core/` 反向依赖。
+三层之间严格单向依赖：`app.py` 负责组装；UI 依赖 core；`platforms/mac` 可选且从不被 `core/` 反向依赖。
 
 ## 数据位置
 

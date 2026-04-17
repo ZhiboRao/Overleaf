@@ -26,7 +26,7 @@ from overleaf_client import APP_BUNDLE_ID, APP_NAME, __version__
 from overleaf_client.core.browser import OverleafProfile
 from overleaf_client.core.config import ConfigManager
 from overleaf_client.core.credentials import CredentialStore
-from overleaf_client.platform.mac.dock import DockBadge
+from overleaf_client.platforms.mac.dock import DockBadge
 from overleaf_client.ui.main_window import MainWindow
 from overleaf_client.ui.menu_bar import build_menu_bar
 
