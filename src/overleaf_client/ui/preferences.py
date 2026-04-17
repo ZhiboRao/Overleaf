@@ -10,7 +10,6 @@ from pathlib import Path
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
-    QComboBox,
     QDialog,
     QDialogButtonBox,
     QDoubleSpinBox,
@@ -61,23 +60,6 @@ class PreferencesDialog(QDialog):
         self._zoom.setDecimals(2)
         self._zoom.setValue(cfg.zoom_factor)
 
-        # (user-data, display label). Order is what the user sees.
-        # (内部值, 显示名)。顺序即下拉菜单顺序。
-        self._language_choices: list[tuple[str, str]] = [
-            ("auto", "Auto / 跟随系统"),
-            ("en", "English"),
-            ("zh", "中文"),
-        ]
-        self._language = QComboBox()
-        for value, label in self._language_choices:
-            self._language.addItem(label, value)
-        current_idx = next(
-            (i for i, (v, _) in enumerate(self._language_choices)
-             if v == cfg.ui_language),
-            0,
-        )
-        self._language.setCurrentIndex(current_idx)
-
         self._notifications = QCheckBox(
             "Enable system notifications / 启用系统通知",
         )
@@ -107,7 +89,6 @@ class PreferencesDialog(QDialog):
         form = QFormLayout()
         form.addRow("Home URL / 首页地址:", self._home_url)
         form.addRow("Zoom factor / 缩放比例:", self._zoom)
-        form.addRow("Language / 界面语言:", self._language)
         form.addRow(self._notifications)
         form.addRow(self._dock_badge)
         form.addRow(self._autosave_creds)
@@ -146,6 +127,5 @@ class PreferencesDialog(QDialog):
             enable_dock_badge=self._dock_badge.isChecked(),
             autosave_credentials=self._autosave_creds.isChecked(),
             download_dir=self._download_dir.text().strip() or None,
-            ui_language=self._language.currentData() or "auto",
         )
         self.accept()

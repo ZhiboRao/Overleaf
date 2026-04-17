@@ -23,7 +23,7 @@ Overleaf ships as a web app only. This project gives you a real Mac app — its 
 - **Dock badge** (e.g. `!` when offline) via `NSApp.dockTile`.
 - **Offline detection** — probes the home URL every 30 s so captive-portal / DNS failures surface as a status bar and notification.
 - **One-click install** (`install.sh`) — venv → py2app → `/Applications`.
-- **Preferences dialog** — home URL, zoom factor, **UI language** (Auto / English / 中文), download directory, toggle notifications / Dock badge / Keychain autosave.
+- **Preferences dialog** — home URL, zoom factor, download directory, toggle notifications / Dock badge / Keychain autosave.
 - **Multi-window** support for `target="_blank"` links.
 - **macOS-template app icon** — 1024×1024 canvas with the ~80% rounded-square tile and transparent outer margin Apple's template requires, so the Dock icon sits at the same visual size as stock apps.
 - **Clean layered architecture** — `core/` (framework-agnostic), `ui/` (Qt), `platforms/mac/` (macOS integration).
