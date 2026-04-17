@@ -53,7 +53,9 @@ python scripts/build_icon.py
 
 say "Building .app bundle via py2app"
 rm -rf build dist
-python setup.py py2app
+# Ensure Apple's /usr/bin/codesign wins over Homebrew/Anaconda shadows.
+# 确保使用 Apple 自带的 codesign，而不是 Homebrew/Anaconda 的同名工具。
+PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH" python setup.py py2app
 
 APP_PATH="dist/Overleaf Client.app"
 [[ -d "$APP_PATH" ]] || die "Build did not produce $APP_PATH"

@@ -17,10 +17,25 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+from py2app.build_app import py2app as _Py2AppCommand
 from setuptools import setup
 
 if sys.platform != "darwin":
     sys.exit("setup.py (py2app) is only supported on macOS.")
+
+
+# py2app >= 0.28 refuses to build when ``install_requires`` is set, but
+# setuptools auto-populates it from ``pyproject.toml``'s
+# ``[project.dependencies]``. We keep that list for normal
+# ``pip install`` while clearing it right before py2app runs.
+#
+# py2app >= 0.28 拒绝处理带 ``install_requires`` 的项目，但 setuptools
+# 会从 pyproject.toml 的 ``[project.dependencies]`` 自动填入。这里在
+# py2app 真正运行前把它清空，不影响常规 ``pip install``。
+class _Py2App(_Py2AppCommand):
+    def finalize_options(self) -> None:
+        self.distribution.install_requires = None
+        super().finalize_options()
 
 ROOT = Path(__file__).parent.resolve()
 ICON_ICNS = ROOT / "resources" / "icon.icns"
@@ -55,4 +70,5 @@ setup(
     options={"py2app": OPTIONS},
     setup_requires=["py2app>=0.28"],
     package_dir={"": "src"},
+    cmdclass={"py2app": _Py2App},
 )

@@ -53,7 +53,7 @@ icon:
 
 app: icon install-dev
 	rm -rf build dist
-	$(PYTHON) setup.py py2app
+	PATH=/usr/bin:/bin:/usr/sbin:/sbin:$$PATH $(PYTHON) setup.py py2app
 
 dmg: app
 	@command -v create-dmg >/dev/null 2>&1 || { \
