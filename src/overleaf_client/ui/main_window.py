@@ -12,6 +12,7 @@ from PySide6.QtCore import QSize, Qt, QUrl, Slot
 from PySide6.QtGui import QAction, QCloseEvent, QIcon, QKeySequence
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
+    QApplication,
     QInputDialog,
     QLineEdit,
     QMainWindow,
@@ -31,9 +32,11 @@ from overleaf_client.core.browser import (
 from overleaf_client.core.config import ConfigManager
 from overleaf_client.core.credentials import Credential, CredentialStore
 from overleaf_client.core.network import NetworkMonitor
+from overleaf_client.ui.downloads import DownloadsPanel
 from overleaf_client.ui.notifications import Notifier
 from overleaf_client.ui.preferences import PreferencesDialog
 from overleaf_client.ui.shortcuts import login_autofill_js
+from overleaf_client.ui.styles import apply_modern_style
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -51,6 +54,10 @@ class MainWindow(QMainWindow):
         profile: OverleafProfile,
         app_icon: QIcon,
         on_badge_change: Callable[[str | None], None] | None = None,
+        *,
+        skip_initial_load: bool = False,
+        downloads_panel: DownloadsPanel | None = None,
+        hide_on_close: bool = True,
     ) -> None:
         """Initialize the main window.
 
@@ -61,12 +68,26 @@ class MainWindow(QMainWindow):
             app_icon: Icon used for window / tray.
             on_badge_change: Optional callback for Dock badge updates.
                 Called with ``None`` to clear or a short label to set.
+            skip_initial_load: If ``True``, skip loading the home URL.
+                Used for child windows where Qt will drive the page itself
+                (e.g. ``window.open`` targets handed over via the page
+                factory).
+            downloads_panel: Shared downloads panel; the toolbar button
+                opens this panel. ``None`` hides the toolbar button.
+            hide_on_close: If ``True`` (default, used by the primary
+                window), clicking the red traffic light hides the
+                window instead of closing it — the app keeps running in
+                the background and the Dock icon brings it back. Child
+                ``window.open`` popups pass ``False`` so they close
+                normally.
         """
         super().__init__()
         self._config_manager = config_manager
         self._credential_store = credential_store
         self._profile = profile
         self._on_badge_change = on_badge_change
+        self._downloads_panel = downloads_panel
+        self._hide_on_close = hide_on_close
 
         self.setWindowTitle(APP_NAME)
         self.setWindowIcon(app_icon)
@@ -74,7 +95,6 @@ class MainWindow(QMainWindow):
 
         self._view = QWebEngineView(self)
         self._page = OverleafPage(profile, self._view)
-        self._page.new_window_requested.connect(self._open_external_window)
         self._view.setPage(self._page)
         self._view.setZoomFactor(config_manager.config.zoom_factor)
         self.setCentralWidget(self._view)
@@ -101,22 +121,23 @@ class MainWindow(QMainWindow):
         self._view.urlChanged.connect(self._on_url_changed)
         self._view.titleChanged.connect(self._on_title_changed)
 
-        self._view.load(QUrl(localized_home_url(config_manager.config)))
+        if not skip_initial_load:
+            self._view.load(QUrl(localized_home_url(config_manager.config)))
 
     # ---------------------------------------------------------------- Toolbar
     def _build_toolbar(self) -> QToolBar:
         toolbar = QToolBar("Main", self)
         toolbar.setMovable(False)
-        # Enlarge toolbar labels so they read comfortably on Retina displays.
-        # 放大工具栏字体，便于在 Retina 显示器上阅读。
-        font = toolbar.font()
-        font.setPointSize(16)
-        toolbar.setFont(font)
         toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
 
-        def _add(text: str, handler: Callable[[], None],
-                 shortcut: QKeySequence | None = None) -> QAction:
-            action = QAction(text, self)
+        def _add(
+            label: str,
+            handler: Callable[[], None],
+            tooltip: str,
+            shortcut: QKeySequence | None = None,
+        ) -> QAction:
+            action = QAction(label, self)
+            action.setToolTip(tooltip)
             if shortcut is not None:
                 action.setShortcut(shortcut)
             action.triggered.connect(handler)
@@ -124,14 +145,22 @@ class MainWindow(QMainWindow):
             self.addAction(action)  # keeps shortcut active without focus
             return action
 
-        _add("Back / 后退", self._view_action_back,
+        # Unicode glyphs serve as mini "icons" so the toolbar reads at a
+        # glance without shipping extra image assets.
+        # Unicode 字符充当迷你图标，无需额外图像资源即可一眼识别。
+        _add("‹  Back", self._view_action_back,
+             "Back / 后退",
              QKeySequence(QKeySequence.StandardKey.Back))
-        _add("Forward / 前进", self._view_action_forward,
+        _add("Forward  ›", self._view_action_forward,
+             "Forward / 前进",
              QKeySequence(QKeySequence.StandardKey.Forward))
-        _add("Reload / 刷新", lambda: self._view.reload(),
+        _add("⟳  Reload", lambda: self._view.reload(),
+             "Reload / 刷新",
              QKeySequence(QKeySequence.StandardKey.Refresh))
         toolbar.addSeparator()
-        _add("Home / 首页", self._go_home)
+        _add("⌂  Home", self._go_home, "Home / 首页")
+        if self._downloads_panel is not None:
+            _add("⇣  Downloads", self._show_downloads, "Downloads / 下载")
         return toolbar
 
     def _view_action_back(self) -> None:
@@ -142,6 +171,14 @@ class MainWindow(QMainWindow):
 
     def _go_home(self) -> None:
         self._view.load(QUrl(localized_home_url(self._config_manager.config)))
+
+    def _show_downloads(self) -> None:
+        panel = self._downloads_panel
+        if panel is None:
+            return
+        panel.show()
+        panel.raise_()
+        panel.activateWindow()
 
     # ------------------------------------------------------------- Callbacks
     @Slot(bool)
@@ -175,22 +212,6 @@ class MainWindow(QMainWindow):
             self._notifier.notify(APP_NAME, message)
         if self._on_badge_change is not None:
             self._on_badge_change(None if online else "!")
-
-    @Slot(QUrl)
-    def _open_external_window(self, url: QUrl) -> None:
-        """Open link in a new internal window rather than a system browser.
-
-        新建一个应用内窗口加载链接，而非委派到系统浏览器。
-        """
-        child = MainWindow(
-            config_manager=self._config_manager,
-            credential_store=self._credential_store,
-            profile=self._profile,
-            app_icon=self.windowIcon(),
-            on_badge_change=self._on_badge_change,
-        )
-        child._view.load(url)
-        child.show()
 
     # -------------------------------------------------------------- Login UX
     def _try_autofill_login(self) -> None:
@@ -237,10 +258,31 @@ class MainWindow(QMainWindow):
         dlg = PreferencesDialog(
             self._config_manager, self._credential_store, parent=self,
         )
-        prev_language = self._config_manager.config.ui_language
+        prev = self._config_manager.config
+        prev_language = prev.ui_language
+        prev_font = prev.ui_font_size
+        prev_opacity = prev.window_opacity
+        prev_toolbar_pad = prev.ui_toolbar_padding
         if dlg.exec() == PreferencesDialog.DialogCode.Accepted:
             cfg = self._config_manager.config
             self._view.setZoomFactor(cfg.zoom_factor)
+            if (
+                cfg.ui_font_size != prev_font
+                or cfg.ui_toolbar_padding != prev_toolbar_pad
+            ):
+                app = QApplication.instance()
+                if isinstance(app, QApplication):
+                    apply_modern_style(
+                        app,
+                        base_pt=cfg.ui_font_size,
+                        toolbar_pad_y=cfg.ui_toolbar_padding,
+                    )
+            if cfg.window_opacity != prev_opacity and (
+                self._downloads_panel is not None
+            ):
+                self._downloads_panel.setWindowOpacity(
+                    cfg.window_opacity / 100.0,
+                )
             if cfg.ui_language != prev_language:
                 # Rewrite the current page's host so the user lands on the
                 # matching Overleaf mirror (cn ↔ www). Login cookies are
@@ -254,5 +296,18 @@ class MainWindow(QMainWindow):
 
     # --------------------------------------------------------------- Qt hooks
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
-        """Persist window state then accept / 保存窗口状态后关闭."""
+        """Hide (don't quit) when the red button is clicked.
+
+        点击红色关闭按钮时隐藏窗口但不退出应用（像 Claude Desktop）。
+        Cmd+Q 仍会真正退出，因为走的是 ``app.quit()`` 而非 closeEvent。
+
+        The app keeps running in the background; clicking the Dock icon
+        re-shows the window via the activation hook in
+        :mod:`overleaf_client.app`. Child ``window.open`` popups opt out
+        by passing ``hide_on_close=False`` so they close normally.
+        """
+        if self._hide_on_close:
+            event.ignore()
+            self.hide()
+            return
         event.accept()

@@ -18,19 +18,51 @@ import sys
 from importlib import resources
 from pathlib import Path
 
-from PySide6.QtCore import QCoreApplication
+from PySide6.QtCore import QCoreApplication, QEvent
 from PySide6.QtGui import QIcon
+from PySide6.QtWebEngineCore import QWebEnginePage
 from PySide6.QtWidgets import QApplication, QMenuBar, QMessageBox
 
 from overleaf_client import APP_BUNDLE_ID, APP_NAME, __version__
-from overleaf_client.core.browser import OverleafProfile
+from overleaf_client.core.browser import OverleafPage, OverleafProfile
 from overleaf_client.core.config import ConfigManager
 from overleaf_client.core.credentials import CredentialStore
 from overleaf_client.platforms.mac.dock import DockBadge
+from overleaf_client.ui.downloads import DownloadsPanel
 from overleaf_client.ui.main_window import MainWindow
 from overleaf_client.ui.menu_bar import build_menu_bar
+from overleaf_client.ui.styles import apply_modern_style
 
 _LOGGER = logging.getLogger(__name__)
+
+
+class _OverleafApplication(QApplication):
+    """QApplication that re-shows the main window on Dock-icon activation.
+
+    点击 Dock 图标（或 ``Cmd-Tab`` 切回应用）时重新显示主窗口的
+    QApplication 子类。主窗口关闭只是隐藏，所以需要这个入口把它唤回来。
+
+    macOS delivers :attr:`QEvent.Type.ApplicationActivate` to the
+    application itself (not any widget), so subclassing ``QApplication``
+    and overriding :meth:`event` is the canonical hook.
+    """
+
+    def __init__(self, argv: list[str]) -> None:
+        super().__init__(argv)
+        self._main_window: MainWindow | None = None
+
+    def set_main_window(self, window: MainWindow) -> None:
+        """Register the window to reveal on re-activation."""
+        self._main_window = window
+
+    def event(self, e: QEvent) -> bool:
+        if e.type() == QEvent.Type.ApplicationActivate:
+            win = self._main_window
+            if win is not None and not win.isVisible():
+                win.show()
+                win.raise_()
+                win.activateWindow()
+        return super().event(e)
 
 
 def _configure_logging() -> None:
@@ -79,17 +111,33 @@ def main(argv: list[str] | None = None) -> int:
     QCoreApplication.setApplicationVersion(__version__)
     QCoreApplication.setOrganizationDomain(APP_BUNDLE_ID)
 
-    app = QApplication(argv)
+    app = _OverleafApplication(argv)
     app.setApplicationDisplayName(APP_NAME)
-    app.setQuitOnLastWindowClosed(True)
+    # Main window "close" hides instead of quitting; only Cmd+Q or the
+    # app menu's Quit action should terminate the app. Without this,
+    # Qt would still quit if we ever emit a real close.
+    # 主窗口关闭只是隐藏；只有 Cmd+Q / 菜单退出才会真正退出。
+    app.setQuitOnLastWindowClosed(False)
 
     icon = _load_icon()
     app.setWindowIcon(icon)
 
     config_manager = ConfigManager()
+    apply_modern_style(
+        app,
+        base_pt=config_manager.config.ui_font_size,
+        toolbar_pad_y=config_manager.config.ui_toolbar_padding,
+    )
     credential_store = CredentialStore()
     profile = OverleafProfile(config_manager, parent=app)
     dock_badge = DockBadge()
+
+    downloads_panel = DownloadsPanel()
+    downloads_panel.setWindowIcon(icon)
+    downloads_panel.setWindowOpacity(
+        config_manager.config.window_opacity / 100.0,
+    )
+    profile.download_requested.connect(downloads_panel.track)
 
     def _update_badge(label: str | None) -> None:
         if config_manager.config.enable_dock_badge:
@@ -101,7 +149,35 @@ def main(argv: list[str] | None = None) -> int:
         profile=profile,
         app_icon=icon,
         on_badge_change=_update_badge,
+        downloads_panel=downloads_panel,
     )
+
+    # Keep child windows alive for the life of the app; without this the
+    # MainWindow returned by the factory below would be garbage collected
+    # as soon as the factory returns, tearing its page down before Qt gets
+    # a chance to load the ``window.open`` target.
+    # 保留子窗口引用，否则工厂一返回 MainWindow 就会被 GC，导致 Qt
+    # 还没来得及加载 ``window.open`` 目标页面就被销毁。
+    child_windows: list[MainWindow] = []
+
+    def _new_window_factory() -> QWebEnginePage | None:
+        child = MainWindow(
+            config_manager=config_manager,
+            credential_store=credential_store,
+            profile=profile,
+            app_icon=icon,
+            on_badge_change=_update_badge,
+            skip_initial_load=True,
+            downloads_panel=downloads_panel,
+            hide_on_close=False,
+        )
+        child_windows.append(child)
+        child.show()
+        return child._page  # noqa: SLF001
+
+    OverleafPage.set_new_window_factory(_new_window_factory)
+
+    app.set_main_window(window)
 
     # On macOS a single shared menu bar lives at the top of the screen.
     # macOS 上顶部系统菜单栏由单一共享 QMenuBar 驱动。

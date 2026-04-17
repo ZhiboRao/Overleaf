@@ -15,10 +15,11 @@ are routed to the user-configured directory (``~/Downloads`` by default).
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
 
-from PySide6.QtCore import QObject, QUrl, Signal, Slot
+from PySide6.QtCore import QObject, Signal, Slot
 from PySide6.QtWebEngineCore import (
     QWebEngineDownloadRequest,
     QWebEnginePage,
@@ -101,6 +102,13 @@ class OverleafProfile(QWebEngineProfile):
     应用内所有页面共享的持久化 QtWebEngine Profile。
     """
 
+    # Emitted after the profile has routed the download to the target
+    # directory and accepted it. UI layers (e.g. the downloads panel)
+    # subscribe here to track progress for the returned request object.
+    # 下载被路由并接受后发出。UI 层（如下载面板）订阅此信号，基于传入的
+    # 请求对象追踪进度。
+    download_requested = Signal(QWebEngineDownloadRequest)
+
     def __init__(
         self,
         config_manager: ConfigManager,
@@ -130,17 +138,24 @@ class OverleafProfile(QWebEngineProfile):
         self.setSpellCheckEnabled(False)
 
         settings = self.settings()
-        for attr in (
-            QWebEngineSettings.WebAttribute.LocalStorageEnabled,
-            QWebEngineSettings.WebAttribute.PluginsEnabled,
-            QWebEngineSettings.WebAttribute.JavascriptEnabled,
-            QWebEngineSettings.WebAttribute.JavascriptCanOpenWindows,
-            QWebEngineSettings.WebAttribute.JavascriptCanAccessClipboard,
-            QWebEngineSettings.WebAttribute.FullScreenSupportEnabled,
-            QWebEngineSettings.WebAttribute.PdfViewerEnabled,
-            QWebEngineSettings.WebAttribute.AllowRunningInsecureContent,
+        # Disable Qt's built-in PDF viewer so Overleaf's "Download PDF"
+        # (served as application/pdf without Content-Disposition: attachment)
+        # reaches the download handler instead of being rendered inline.
+        # The editor's preview pane uses PDF.js client-side and is unaffected.
+        # 关闭 Qt 自带 PDF 预览器：Overleaf 的 "Download PDF" 返回
+        # application/pdf 而不带 Content-Disposition: attachment，若不关
+        # 就会被内嵌渲染而不触发下载。左侧编辑预览用的是 PDF.js，不受影响。
+        for attr, enabled in (
+            (QWebEngineSettings.WebAttribute.LocalStorageEnabled, True),
+            (QWebEngineSettings.WebAttribute.PluginsEnabled, True),
+            (QWebEngineSettings.WebAttribute.JavascriptEnabled, True),
+            (QWebEngineSettings.WebAttribute.JavascriptCanOpenWindows, True),
+            (QWebEngineSettings.WebAttribute.JavascriptCanAccessClipboard, True),
+            (QWebEngineSettings.WebAttribute.FullScreenSupportEnabled, True),
+            (QWebEngineSettings.WebAttribute.PdfViewerEnabled, False),
+            (QWebEngineSettings.WebAttribute.AllowRunningInsecureContent, True),
         ):
-            settings.setAttribute(attr, True)
+            settings.setAttribute(attr, enabled)
 
         self.downloadRequested.connect(self._on_download_requested)
 
@@ -164,19 +179,30 @@ class OverleafProfile(QWebEngineProfile):
             target_dir,
         )
         download.accept()
+        self.download_requested.emit(download)
 
 
 class OverleafPage(QWebEnginePage):
-    """Page that forwards new-window navigations to the owning window.
+    """Page backed by the shared profile.
 
-    将新窗口请求转发给宿主窗口处理的 Page。
+    基于共享 Profile 的 Page。
 
-    Signals:
-        new_window_requested: Emitted when the page wants to open a URL in
-            a new window (e.g. target="_blank" link, window.open).
+    ``createWindow`` (invoked by Qt for ``window.open`` / ``target="_blank"``
+    / middle-click) must return a fully constructed :class:`QWebEnginePage`
+    attached to a visible view — otherwise the new tab loads silently,
+    which is why Overleaf's "Download PDF" button used to do nothing. A
+    factory callable, registered by the app at startup, creates a real
+    child window and returns its page.
+    ``createWindow`` 由 Qt 在 ``window.open`` / ``target="_blank"`` / 中键
+    点击时调用。若返回的 Page 没绑定可见视图，新窗口就会在后台加载、
+    界面上什么也看不到——这正是之前 Overleaf "Download PDF" 无效的根因。
+    应用启动时注册一个工厂回调，负责创建真正的子窗口并返回其 Page。
     """
 
-    new_window_requested = Signal(QUrl)
+    # Set by the app at startup. Takes no arguments and returns the
+    # ``QWebEnginePage`` that Qt should drive the new window with.
+    # 启动时注册；不带参数，返回 Qt 用于新窗口的 ``QWebEnginePage``。
+    _new_window_factory: Callable[[], QWebEnginePage | None] | None = None
 
     def __init__(
         self,
@@ -191,23 +217,27 @@ class OverleafPage(QWebEnginePage):
         """
         super().__init__(profile, parent)
 
+    @classmethod
+    def set_new_window_factory(
+        cls, factory: Callable[[], QWebEnginePage | None] | None,
+    ) -> None:
+        """Register the factory that :meth:`createWindow` will delegate to.
+
+        注册 :meth:`createWindow` 使用的工厂回调。
+        """
+        cls._new_window_factory = factory
+
     def createWindow(  # noqa: N802 - Qt override
         self, _window_type: QWebEnginePage.WebWindowType,
     ) -> QWebEnginePage | None:
-        """Intercept ``window.open`` / target="_blank" navigations.
+        """Produce a real, visible child window for Qt to drive.
 
-        拦截 ``window.open`` / target="_blank" 跳转。
+        为 Qt 创建真正可见的子窗口。
         """
-        # We cannot synchronously construct a window here without creating
-        # a retain cycle; instead we create a disposable page, wait for
-        # the URL, emit it, then let Qt dispose the page.
-        # 这里不能同步创建窗口，否则会产生循环引用。改为创建一个
-        # 临时 Page，拿到 URL 后发信号并交由 Qt 回收。
-        staging = OverleafPage(
-            profile=self.profile() if isinstance(
-                self.profile(), OverleafProfile,
-            ) else None,  # type: ignore[arg-type]
-            parent=self,
-        )
-        staging.urlChanged.connect(self.new_window_requested)
-        return staging
+        factory = OverleafPage._new_window_factory
+        if factory is None:
+            _LOGGER.warning(
+                "new window requested but no factory registered; ignoring",
+            )
+            return None
+        return factory()

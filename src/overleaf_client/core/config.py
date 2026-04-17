@@ -62,6 +62,15 @@ class AppConfig:
             faster in mainland China); ``"en"`` routes to
             ``www.overleaf.com`` (English). ``"auto"`` uses ``home_url``
             unchanged so self-hosted deployments keep working.
+        ui_font_size: Base font point size applied app-wide via the
+            global stylesheet. Downstream sizes (titles, hints,
+            download percentages) scale proportionally.
+        window_opacity: Opacity (percent, 50–100) of the Preferences
+            dialog and the Downloads panel. 100 means fully opaque.
+        ui_toolbar_padding: Top/bottom padding (px, 2–14) for
+            main-window toolbar buttons (Back / Forward / Reload /
+            Home / Downloads) — smaller values produce a thinner
+            toolbar row.
     """
 
     home_url: str = DEFAULT_HOME_URL
@@ -71,6 +80,9 @@ class AppConfig:
     autosave_credentials: bool = True
     download_dir: str | None = None
     ui_language: str = "auto"
+    ui_font_size: int = 16
+    window_opacity: int = 95
+    ui_toolbar_padding: int = 4
 
 
 class ConfigManager:

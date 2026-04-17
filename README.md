@@ -18,12 +18,19 @@ Overleaf ships as a web app only. This project gives you a real Mac app — its 
   - `⌘,` Preferences
   - `⌘Q` Quit
   - Overleaf's own in-page shortcuts (`⌘↩` Recompile, etc.) keep working.
-- **In-window toolbar** with Back / Forward / Reload / Home — enlarged font for Retina readability.
+- **In-window toolbar** with Back / Forward / Reload / Home / Downloads — readable font with configurable row height.
+- **Close-to-background** (like Claude Desktop / Slack) — the red traffic light hides the main window but keeps the app alive; clicking the Dock icon re-reveals it. `⌘Q` still truly quits.
+- **Downloads panel** — a Motrix-inspired floating panel lists active and completed downloads with colored file-type badges, live speed / ETA, a progress bar, `Cancel`, and `Show in Finder`.
+- **Modern global stylesheet** — a single parameterized QSS sheet drives the whole app; sizes scale proportionally from a single base point size so everything (titles, tabs, download cards) stays in visual harmony.
+- **Appearance settings** — in Preferences you can tune:
+  - Base font size (12–24 pt, re-applied live)
+  - Window opacity for Preferences / Downloads (50–100 %, previewed as you drag)
+  - Toolbar row height (padding 2–14 px)
 - **System notifications** via `osascript` (Notification Center fallback).
 - **Dock badge** (e.g. `!` when offline) via `NSApp.dockTile`.
 - **Offline detection** — probes the home URL every 30 s so captive-portal / DNS failures surface as a status bar and notification.
 - **One-click install** (`install.sh`) — venv → py2app → `/Applications`.
-- **Preferences dialog** — home URL, zoom factor, **language** (`Auto` / `English` → `www.overleaf.com` / `中文` → `cn.overleaf.com`), download directory, toggle notifications / Dock badge / Keychain autosave.
+- **Preferences dialog** — iTerm2-style tabbed layout: home URL, zoom factor, **language** (`Auto` / `English` → `www.overleaf.com` / `中文` → `cn.overleaf.com`), download directory, toggle notifications / Dock badge / Keychain autosave.
 - **Multi-window** support for `target="_blank"` links.
 - **macOS-template app icon** — 1024×1024 canvas with the ~80% rounded-square tile and transparent outer margin Apple's template requires, so the Dock icon sits at the same visual size as stock apps.
 - **Clean layered architecture** — `core/` (framework-agnostic), `ui/` (Qt), `platforms/mac/` (macOS integration).
@@ -81,7 +88,9 @@ src/overleaf_client/
 │   ├── menu_bar.py     # Native menu construction
 │   ├── shortcuts.py    # JS snippets that drive Overleaf's DOM
 │   ├── notifications.py# osascript + QSystemTrayIcon fallback
-│   └── preferences.py  # Preferences dialog
+│   ├── downloads.py    # Motrix-inspired downloads panel + per-file cards
+│   ├── styles.py       # Global parameterized QSS stylesheet
+│   └── preferences.py  # iTerm-style tabbed preferences dialog
 └── platforms/mac/
     └── dock.py         # NSApp.dockTile badge helper
 ```
