@@ -32,8 +32,14 @@ from PIL import Image, ImageChops, ImageDraw
 _BG_COLOR = (19, 119, 58, 255)
 
 _CANVAS = 1024
-_CORNER_RATIO = 0.2237  # ≈ macOS Big Sur+ corner radius.
-_SAFE_AREA_RATIO = 0.62  # Fraction of canvas occupied by the logo.
+# Apple's macOS icon template: the visible rounded square is ~824/1024 of
+# the canvas, with ~100px transparent margin on every side. Without this
+# outer margin the icon looks oversized next to stock apps in the Dock.
+# Apple 模板：可见圆角方块约占画布 824/1024，四周留 ~100px 透明边距；
+# 没有这层外边距，Dock 里会比系统 app 看上去大一圈。
+_TILE_RATIO = 0.8047  # 824/1024
+_CORNER_RATIO = 0.2237  # macOS Big Sur+ corner radius relative to the tile.
+_SAFE_AREA_RATIO = 0.5  # Logo occupies 512 px — measured within the 1024 canvas.
 
 _RESOURCES = Path(__file__).resolve().parent.parent / "resources"
 _LOGO_PATH = _RESOURCES / "logo.png"
@@ -103,14 +109,20 @@ def build_icon() -> Path:
     recolored = Image.new("RGBA", source_rgb.size, (0, 0, 0, 0))
     recolored = Image.composite(white_layer, recolored, silhouette_alpha)
 
-    background = Image.new("RGBA", (_CANVAS, _CANVAS), _BG_COLOR)
+    # Build the green rounded-square tile (smaller than the full canvas), then
+    # paste it centered so the transparent margin matches Apple's template.
+    # 先绘制小于画布的绿色圆角方块，再居中粘贴，外围保留 Apple 模板要求的
+    # 透明边距。
+    tile_size = int(_CANVAS * _TILE_RATIO)
+    tile = Image.new("RGBA", (tile_size, tile_size), _BG_COLOR)
 
-    offset = ((_CANVAS - target) // 2, (_CANVAS - target) // 2)
-    background.alpha_composite(recolored, dest=offset)
+    logo_offset = ((tile_size - target) // 2, (tile_size - target) // 2)
+    tile.alpha_composite(recolored, dest=logo_offset)
 
-    mask = _rounded_rect_mask(_CANVAS, int(_CANVAS * _CORNER_RATIO))
+    tile_mask = _rounded_rect_mask(tile_size, int(tile_size * _CORNER_RATIO))
     final = Image.new("RGBA", (_CANVAS, _CANVAS), (0, 0, 0, 0))
-    final.paste(background, (0, 0), mask=mask)
+    tile_pos = ((_CANVAS - tile_size) // 2, (_CANVAS - tile_size) // 2)
+    final.paste(tile, tile_pos, mask=tile_mask)
 
     final.save(_ICON_PATH, format="PNG")
     return _ICON_PATH

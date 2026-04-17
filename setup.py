@@ -20,25 +20,37 @@ import sys
 import sysconfig
 from pathlib import Path
 
-from py2app.build_app import py2app as _py2app_command  # noqa: N812
 from setuptools import setup
 
 if sys.platform != "darwin":
     sys.exit("setup.py (py2app) is only supported on macOS.")
 
 
-# py2app >= 0.28 refuses to build when ``install_requires`` is set, but
-# setuptools auto-populates it from ``pyproject.toml``'s
-# ``[project.dependencies]``. We keep that list for normal
-# ``pip install`` while clearing it right before py2app runs.
+# Only import py2app when the ``py2app`` command is actually being run.
+# pip's PEP 517 build isolation evaluates this file to collect metadata
+# without installing setup_requires, so a top-level import would fail.
 #
-# py2app >= 0.28 拒绝处理带 ``install_requires`` 的项目，但 setuptools
-# 会从 pyproject.toml 的 ``[project.dependencies]`` 自动填入。这里在
-# py2app 真正运行前把它清空，不影响常规 ``pip install``。
-class _Py2App(_py2app_command):
-    def finalize_options(self) -> None:
-        self.distribution.install_requires = None
-        super().finalize_options()
+# 仅在真正执行 ``py2app`` 命令时才导入 py2app。pip 的 PEP 517 构建
+# 会在未安装 setup_requires 的隔离环境下执行本文件，顶层导入会报错。
+_RUNNING_PY2APP = "py2app" in sys.argv
+
+
+def _py2app_cmdclass() -> dict[str, type]:
+    # py2app >= 0.28 refuses to build when ``install_requires`` is set,
+    # but setuptools auto-populates it from pyproject.toml's
+    # ``[project.dependencies]``. We clear it just before py2app runs.
+    #
+    # py2app >= 0.28 拒绝处理带 install_requires 的项目；setuptools
+    # 会从 pyproject.toml 中自动填入。此处在 py2app 真正运行前清空。
+    from py2app.build_app import py2app as _base  # noqa: N813
+
+    class _Py2App(_base):  # type: ignore[misc, valid-type]
+        def finalize_options(self) -> None:
+            self.distribution.install_requires = None
+            super().finalize_options()
+
+    return {"py2app": _Py2App}
+
 
 ROOT = Path(__file__).parent.resolve()
 ICON_ICNS = ROOT / "resources" / "icon.icns"
@@ -96,34 +108,38 @@ def _discover_libffi() -> list[str]:
             return [str(c.resolve())]
     return []
 
-OPTIONS = {
-    "argv_emulation": False,
-    "iconfile": str(ICON_ICNS) if ICON_ICNS.exists() else None,
-    "plist": {
-        "CFBundleName": "Overleaf Client",
-        "CFBundleDisplayName": "Overleaf Client",
-        "CFBundleIdentifier": "com.zhiborao.overleafclient",
-        "CFBundleVersion": "0.1.0",
-        "CFBundleShortVersionString": "0.1.0",
-        "LSMinimumSystemVersion": "11.0",
-        "NSHighResolutionCapable": True,
-        "NSRequiresAquaSystemAppearance": False,
-        "NSHumanReadableCopyright": "© 2026 ZhiboRao. MIT License.",
-        "NSAppTransportSecurity": {
-            "NSAllowsArbitraryLoads": True,
+def _py2app_options() -> dict[str, object]:
+    return {
+        "argv_emulation": False,
+        "iconfile": str(ICON_ICNS) if ICON_ICNS.exists() else None,
+        "plist": {
+            "CFBundleName": "Overleaf Client",
+            "CFBundleDisplayName": "Overleaf Client",
+            "CFBundleIdentifier": "com.zhiborao.overleafclient",
+            "CFBundleVersion": "0.1.0",
+            "CFBundleShortVersionString": "0.1.0",
+            "LSMinimumSystemVersion": "11.0",
+            "NSHighResolutionCapable": True,
+            "NSRequiresAquaSystemAppearance": False,
+            "NSHumanReadableCopyright": "© 2026 ZhiboRao. MIT License.",
+            "NSAppTransportSecurity": {
+                "NSAllowsArbitraryLoads": True,
+            },
         },
-    },
-    "packages": ["overleaf_client", "PySide6"],
-    "includes": ["keyring", "keyring.backends"],
-    "resources": [str(ROOT / "resources")],
-    "frameworks": _discover_libffi(),
-}
+        "packages": ["overleaf_client", "PySide6"],
+        "resources": [str(ROOT / "resources")],
+        "frameworks": _discover_libffi(),
+    }
 
-setup(
-    name="Overleaf Client",
-    app=APP,
-    options={"py2app": OPTIONS},
-    setup_requires=["py2app>=0.28"],
-    package_dir={"": "src"},
-    cmdclass={"py2app": _Py2App},
-)
+
+_setup_kwargs: dict[str, object] = {
+    "name": "Overleaf Client",
+    "app": APP,
+    "setup_requires": ["py2app>=0.28"],
+    "package_dir": {"": "src"},
+}
+if _RUNNING_PY2APP:
+    _setup_kwargs["options"] = {"py2app": _py2app_options()}
+    _setup_kwargs["cmdclass"] = _py2app_cmdclass()
+
+setup(**_setup_kwargs)

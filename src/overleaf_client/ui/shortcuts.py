@@ -12,46 +12,7 @@ only this file needs updating.
 
 from __future__ import annotations
 
-# Trigger "Recompile". Overleaf binds Cmd+Enter natively, but this button
-# selector is the stable way to work when the editor is not focused.
-# 触发「Recompile」。Overleaf 原生绑定 Cmd+Enter，但当编辑器失焦时
-# 通过点击按钮是更可靠的做法。
-RECOMPILE_JS = r"""
-(function () {
-    const selectors = [
-        'button.btn-recompile',
-        'button[aria-label="Recompile"]',
-        '[data-testid="recompile-button"]',
-    ];
-    for (const sel of selectors) {
-        const el = document.querySelector(sel);
-        if (el) { el.click(); return true; }
-    }
-    return false;
-})();
-"""
-
-# Download the compiled PDF via Overleaf's own "Download PDF" action.
-# 通过 Overleaf 自身的「Download PDF」按钮下载已编译的 PDF。
-DOWNLOAD_PDF_JS = r"""
-(function () {
-    const selectors = [
-        'a.btn-download-pdf',
-        'a[aria-label="Download PDF"]',
-        '[data-testid="download-pdf"]',
-    ];
-    for (const sel of selectors) {
-        const el = document.querySelector(sel);
-        if (el) { el.click(); return true; }
-    }
-    // Fallback: click the PDF icon in the toolbar.
-    const iconLink = document.querySelector(
-        'a[href*="output.pdf"], a[href*="/download/project/"]',
-    );
-    if (iconLink) { iconLink.click(); return true; }
-    return false;
-})();
-"""
+import json
 
 # Auto-fill the login form. The two input ids are stable on Overleaf's
 # Passport-based login page ("email" and "password").
@@ -87,7 +48,6 @@ def login_autofill_js(email: str, password: str) -> str:
     Returns:
         JavaScript source ready to be evaluated in the page.
     """
-    import json
     return LOGIN_AUTOFILL_JS_TEMPLATE % {
         "email": json.dumps(email),
         "password": json.dumps(password),

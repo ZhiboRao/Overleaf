@@ -12,18 +12,20 @@ Overleaf 只提供 Web 版，没有桌面客户端。本项目让它像一个真
 
 ## 特性
 
-- **登录持久化**：Cookie 存放在 QtWebEngine Profile 中；邮箱 / 密码可选通过 **macOS 钥匙串** 加密保存（不会明文落盘）。
+- **登录持久化**：Cookie 存放在 QtWebEngine Profile 中；邮箱 / 密码可选通过 **macOS 钥匙串** 加密保存（不会明文落盘）。钥匙串后端改用 `/usr/bin/security` 命令行调用，因而在未签名的 `py2app` 产物中也能正常读写。
 - **原生菜单栏** 遵循 Mac 习惯：
-  - `⌘S` 触发编译
-  - `⌘D` 下载 PDF
-  - `⌘N` 新建项目
-  - `⌘R` 刷新 / `⌘,` 偏好设置 / `⌘Q` 退出
+  - `⌘R` 刷新
+  - `⌘,` 偏好设置
+  - `⌘Q` 退出
+  - Overleaf 自带的编辑器快捷键（`⌘↩` 触发编译等）继续可用。
+- **窗口内工具栏**：Back / Forward / Reload / Home，字号放大，Retina 屏幕更易读。
 - **系统通知**：通过 `osascript` 调用通知中心，失败回退到 Qt 系统托盘通知。
 - **Dock 徽标**：使用 `NSApp.dockTile` 在离线等状态下显示 `!`。
 - **离线检测**：每 30 秒向首页做一次 HEAD 探测，校园网强制门户 / DNS 故障也能即时在状态栏和通知中显示。
 - **一键安装**（`install.sh`）：venv → py2app → 拷贝到 `/Applications`。
 - **偏好设置**：可修改首页地址、缩放比例、下载目录，并切换通知 / Dock 徽标 / 钥匙串自动保存。
 - **多窗口**：支持 `target="_blank"` 链接在应用内另开窗口。
+- **macOS 模板图标**：1024×1024 画布内的圆角方块约占 80%，四周留透明边距，Dock 中的视觉大小与系统自带 app 保持一致。
 - **清晰分层架构**：`core/`（与 UI 无关）、`ui/`（Qt）、`platforms/mac/`（macOS 集成）。
 
 ## 环境要求
@@ -97,7 +99,7 @@ src/overleaf_client/
 
 ## 隐私与安全
 
-- 密码通过 `keyring` 写入系统钥匙串，不会明文落盘，也不会在除 HTTPS 登录请求之外的任何位置发送。
+- 密码通过 `/usr/bin/security` 写入系统钥匙串，不会明文落盘，也不会在除 HTTPS 登录请求之外的任何位置发送。
 - Cookie 位于 QtWebEngine 沙箱 Profile 目录内。
 - 无埋点、无后台回传。网络流量仅来自 Overleaf 本身 + 一个周期性 HEAD 请求（用于离线检测）。
 

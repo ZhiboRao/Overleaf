@@ -37,10 +37,7 @@ def _make_action(
 def build_menu_bar(
     menu_bar: QMenuBar,
     *,
-    on_new_project: Callable[[], None],
     on_open_preferences: Callable[[], None],
-    on_recompile: Callable[[], None],
-    on_download_pdf: Callable[[], None],
     on_reload: Callable[[], None],
     on_toggle_fullscreen: Callable[[], None],
     on_save_credentials: Callable[[], None],
@@ -54,10 +51,7 @@ def build_menu_bar(
     Args:
         menu_bar: The :class:`QMenuBar` instance to populate (usually the
             shared menu bar when ``setMenuBar`` is not used on macOS).
-        on_new_project: "File > New Project" handler.
         on_open_preferences: "Overleaf > Preferences…" handler.
-        on_recompile: "Project > Recompile" handler.
-        on_download_pdf: "Project > Download PDF" handler.
         on_reload: "View > Reload" handler.
         on_toggle_fullscreen: "View > Enter Full Screen" handler.
         on_save_credentials: "Account > Save Login…" handler.
@@ -87,21 +81,6 @@ def build_menu_bar(
     )
     quit_act.setMenuRole(QAction.MenuRole.QuitRole)
     app_menu.addAction(quit_act)
-
-    # --- File
-    file_menu = menu_bar.addMenu("File / 文件")
-    file_menu.addAction(_make_action(
-        menu_bar, "New Project / 新建项目", "Ctrl+N", on_new_project,
-    ))
-
-    # --- Project
-    proj_menu = menu_bar.addMenu("Project / 项目")
-    proj_menu.addAction(_make_action(
-        menu_bar, "Recompile / 编译", "Ctrl+S", on_recompile,
-    ))
-    proj_menu.addAction(_make_action(
-        menu_bar, "Download PDF / 下载 PDF", "Ctrl+D", on_download_pdf,
-    ))
 
     # --- View
     view_menu = menu_bar.addMenu("View / 视图")

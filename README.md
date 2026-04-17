@@ -12,18 +12,20 @@ Overleaf ships as a web app only. This project gives you a real Mac app — its 
 
 ## Features
 
-- **Persistent login** — cookies live in a QtWebEngine profile, and optional email/password autofill is stored in the **macOS Keychain** (never on disk in plaintext).
+- **Persistent login** — cookies live in a QtWebEngine profile, and optional email/password autofill is stored in the **macOS Keychain** (never on disk in plaintext). The Keychain backend uses the `/usr/bin/security` CLI so it works even inside an unsigned `py2app` bundle.
 - **Native menu bar** with standard Mac conventions:
-  - `⌘S` Recompile
-  - `⌘D` Download PDF
-  - `⌘N` New project
-  - `⌘R` Reload / `⌘,` Preferences / `⌘Q` Quit
+  - `⌘R` Reload
+  - `⌘,` Preferences
+  - `⌘Q` Quit
+  - Overleaf's own in-page shortcuts (`⌘↩` Recompile, etc.) keep working.
+- **In-window toolbar** with Back / Forward / Reload / Home — enlarged font for Retina readability.
 - **System notifications** via `osascript` (Notification Center fallback).
 - **Dock badge** (e.g. `!` when offline) via `NSApp.dockTile`.
 - **Offline detection** — probes the home URL every 30 s so captive-portal / DNS failures surface as a status bar and notification.
 - **One-click install** (`install.sh`) — venv → py2app → `/Applications`.
 - **Preferences dialog** — home URL, zoom factor, download directory, toggle notifications / Dock badge / Keychain autosave.
 - **Multi-window** support for `target="_blank"` links.
+- **macOS-template app icon** — 1024×1024 canvas with the ~80% rounded-square tile and transparent outer margin Apple's template requires, so the Dock icon sits at the same visual size as stock apps.
 - **Clean layered architecture** — `core/` (framework-agnostic), `ui/` (Qt), `platforms/mac/` (macOS integration).
 
 ## Requirements
@@ -97,7 +99,7 @@ The three layers communicate one-way downward: `app.py` owns the dependency grap
 
 ## Privacy & security notes
 
-- Passwords are stored in the system Keychain via the `keyring` package — never written to disk in plaintext or transmitted beyond the HTTPS login request to Overleaf.
+- Passwords are stored in the system Keychain via the `/usr/bin/security` CLI — never written to disk in plaintext or transmitted beyond the HTTPS login request to Overleaf.
 - Cookies live inside QtWebEngine's sandboxed profile directory.
 - No analytics, no background phoning-home. The only network traffic is what the Overleaf site itself does, plus a periodic `HEAD` to your configured home URL for offline detection.
 

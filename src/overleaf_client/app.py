@@ -18,7 +18,7 @@ import sys
 from importlib import resources
 from pathlib import Path
 
-from PySide6.QtCore import QCoreApplication, QUrl
+from PySide6.QtCore import QCoreApplication
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QMenuBar, QMessageBox
 
@@ -107,14 +107,6 @@ def main(argv: list[str] | None = None) -> int:
     # macOS 上顶部系统菜单栏由单一共享 QMenuBar 驱动。
     menu_bar = QMenuBar(parent=None)
 
-    def _on_new_project() -> None:
-        # Overleaf opens the project dashboard at "/project" and offers a
-        # "New project" button there. We simply navigate to it.
-        # Overleaf 的项目列表位于 "/project"，那里有「新建项目」按钮。
-        window._view.load(QUrl(  # noqa: SLF001
-            config_manager.config.home_url.rstrip("/") + "/project",
-        ))
-
     def _on_about() -> None:
         QMessageBox.about(
             window, APP_NAME,
@@ -135,10 +127,7 @@ def main(argv: list[str] | None = None) -> int:
 
     build_menu_bar(
         menu_bar,
-        on_new_project=_on_new_project,
         on_open_preferences=window.open_preferences,
-        on_recompile=window.trigger_recompile,
-        on_download_pdf=window.download_pdf,
         on_reload=lambda: window._view.reload(),  # noqa: SLF001
         on_toggle_fullscreen=_on_toggle_fullscreen,
         on_save_credentials=window.prompt_save_credentials,

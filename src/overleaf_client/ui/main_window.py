@@ -28,11 +28,7 @@ from overleaf_client.core.credentials import Credential, CredentialStore
 from overleaf_client.core.network import NetworkMonitor
 from overleaf_client.ui.notifications import Notifier
 from overleaf_client.ui.preferences import PreferencesDialog
-from overleaf_client.ui.shortcuts import (
-    DOWNLOAD_PDF_JS,
-    RECOMPILE_JS,
-    login_autofill_js,
-)
+from overleaf_client.ui.shortcuts import login_autofill_js
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -106,6 +102,12 @@ class MainWindow(QMainWindow):
     def _build_toolbar(self) -> QToolBar:
         toolbar = QToolBar("Main", self)
         toolbar.setMovable(False)
+        # Enlarge toolbar labels so they read comfortably on Retina displays.
+        # 放大工具栏字体，便于在 Retina 显示器上阅读。
+        font = toolbar.font()
+        font.setPointSize(16)
+        toolbar.setFont(font)
+        toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
 
         def _add(text: str, handler: Callable[[], None],
                  shortcut: QKeySequence | None = None) -> QAction:
@@ -125,10 +127,6 @@ class MainWindow(QMainWindow):
              QKeySequence(QKeySequence.StandardKey.Refresh))
         toolbar.addSeparator()
         _add("Home / 首页", self._go_home)
-        _add("Recompile / 编译", self.trigger_recompile,
-             QKeySequence("Ctrl+S"))
-        _add("Download PDF / 下载 PDF", self.download_pdf,
-             QKeySequence("Ctrl+D"))
         return toolbar
 
     def _view_action_back(self) -> None:
@@ -139,28 +137,6 @@ class MainWindow(QMainWindow):
 
     def _go_home(self) -> None:
         self._view.load(QUrl(self._config_manager.config.home_url))
-
-    # ------------------------------------------------------------- Shortcuts
-    @Slot()
-    def trigger_recompile(self) -> None:
-        """Click the Overleaf "Recompile" button via JS injection.
-
-        通过 JS 注入点击 Overleaf「Recompile」按钮。
-        """
-        self._page.runJavaScript(RECOMPILE_JS, self._on_recompile_result)
-
-    def _on_recompile_result(self, ok: object) -> None:
-        if ok:
-            self._status.showMessage("Recompile triggered / 已触发编译", 3_000)
-        else:
-            self._status.showMessage(
-                "Recompile button not found / 未找到编译按钮", 5_000,
-            )
-
-    @Slot()
-    def download_pdf(self) -> None:
-        """Trigger Overleaf's "Download PDF" action / 触发「下载 PDF」."""
-        self._page.runJavaScript(DOWNLOAD_PDF_JS)
 
     # ------------------------------------------------------------- Callbacks
     @Slot(bool)
