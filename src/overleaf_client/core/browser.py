@@ -48,6 +48,28 @@ def build_user_agent() -> str:
     )
 
 
+# Accept-Language headers sent to Overleaf for each user-selectable choice.
+# "" means "don't override" (Qt uses the system locale, which on a Chinese
+# macOS will send zh-CN and make Overleaf serve Simplified Chinese).
+# Accept-Language 请求头映射。空串表示不覆写，交由 Qt 使用系统语言
+# （中文 macOS 默认发 zh-CN，因此 Overleaf 会显示中文）。
+_ACCEPT_LANGUAGE_BY_UI_LANG: dict[str, str] = {
+    "auto": "",
+    "en": "en-US,en;q=0.9",
+    "zh": "zh-CN,zh;q=0.9,en;q=0.8",
+}
+
+
+def accept_language_for(ui_language: str) -> str:
+    """Return the Accept-Language header value for a config choice.
+
+    返回某个语言设置对应的 Accept-Language 请求头值。
+    """
+    return _ACCEPT_LANGUAGE_BY_UI_LANG.get(
+        ui_language, _ACCEPT_LANGUAGE_BY_UI_LANG["auto"],
+    )
+
+
 class OverleafProfile(QWebEngineProfile):
     """Persistent QtWebEngine profile used by every page in the app.
 
@@ -77,6 +99,7 @@ class OverleafProfile(QWebEngineProfile):
             QWebEngineProfile.PersistentCookiesPolicy.ForcePersistentCookies,
         )
         self.setHttpUserAgent(build_user_agent())
+        self.apply_language()
         # Overleaf ships its own spellchecker; leave Qt's off to avoid
         # noisy "qtwebengine_dictionaries not found" warnings.
         # Overleaf 自带拼写检查；这里关闭 Qt 的以避免缺字典时的噪音日志。
@@ -96,6 +119,20 @@ class OverleafProfile(QWebEngineProfile):
             settings.setAttribute(attr, True)
 
         self.downloadRequested.connect(self._on_download_requested)
+
+    def apply_language(self) -> None:
+        """Sync ``Accept-Language`` with the current config.
+
+        根据当前配置同步 Accept-Language。
+
+        Safe to call repeatedly; the next HTTP request picks up the new
+        header. A page reload is usually required for an already-loaded
+        page to re-render in the new language.
+        可多次调用。之后发出的 HTTP 请求会采用新的头部；当前页面通常
+        需要刷新一次才能换成新语言。
+        """
+        header = accept_language_for(self._config_manager.config.ui_language)
+        self.setHttpAcceptLanguage(header)
 
     @Slot(QWebEngineDownloadRequest)
     def _on_download_requested(

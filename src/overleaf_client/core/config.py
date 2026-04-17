@@ -57,6 +57,11 @@ class AppConfig:
             the system keychain.
         download_dir: Default download directory for PDFs/artifacts. If
             ``None``, falls back to ``~/Downloads``.
+        ui_language: Preferred Overleaf UI language. One of ``"auto"``
+            (follow the macOS locale), ``"en"`` (force English), or
+            ``"zh"`` (force Simplified Chinese). Overleaf's own UI
+            language is primarily driven by the ``Accept-Language``
+            HTTP header, which this setting controls.
     """
 
     home_url: str = DEFAULT_HOME_URL
@@ -65,6 +70,7 @@ class AppConfig:
     enable_dock_badge: bool = True
     autosave_credentials: bool = True
     download_dir: str | None = None
+    ui_language: str = "auto"
 
 
 class ConfigManager:

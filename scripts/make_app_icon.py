@@ -39,7 +39,7 @@ _CANVAS = 1024
 # 没有这层外边距，Dock 里会比系统 app 看上去大一圈。
 _TILE_RATIO = 0.8047  # 824/1024
 _CORNER_RATIO = 0.2237  # macOS Big Sur+ corner radius relative to the tile.
-_SAFE_AREA_RATIO = 0.5  # Logo occupies 512 px — measured within the 1024 canvas.
+_SAFE_AREA_RATIO = 0.5  # Logo is 512 px — measured on the 1024 canvas.
 
 _RESOURCES = Path(__file__).resolve().parent.parent / "resources"
 _LOGO_PATH = _RESOURCES / "logo.png"

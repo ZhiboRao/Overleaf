@@ -232,8 +232,17 @@ class MainWindow(QMainWindow):
         dlg = PreferencesDialog(
             self._config_manager, self._credential_store, parent=self,
         )
+        prev_language = self._config_manager.config.ui_language
         if dlg.exec() == PreferencesDialog.DialogCode.Accepted:
-            self._view.setZoomFactor(self._config_manager.config.zoom_factor)
+            cfg = self._config_manager.config
+            self._view.setZoomFactor(cfg.zoom_factor)
+            if cfg.ui_language != prev_language:
+                # Push the new Accept-Language to the profile, then reload so
+                # Overleaf renders the page in the chosen language.
+                # 把新的 Accept-Language 推给 Profile，并刷新页面让 Overleaf
+                # 按所选语言重新渲染。
+                self._profile.apply_language()
+                self._view.reload()
 
     # --------------------------------------------------------------- Qt hooks
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
