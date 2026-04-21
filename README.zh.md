@@ -27,6 +27,7 @@ Overleaf 只提供 Web 版，没有桌面客户端。本项目让它像一个真
   - 基准字号（12–24 pt，实时生效）
   - 偏好设置 / 下载面板的窗口透明度（50–100 %，拖动时即时预览）
   - 工具栏行高（内边距 2–14 px）
+- **状态栏时钟与工作计时**：状态栏右侧显示当前时间和本次会话的"实际工作时长"。当窗口被隐藏、失去前台焦点，或连续 2 分钟没有键鼠 / 触控板输入时计时自动暂停；一旦重新有输入立即恢复。空闲检测通过 `ctypes` 直接调用 macOS 的 `CGEventSourceSecondsSinceLastEventType`，不引入额外依赖。
 - **系统通知**：通过 `osascript` 调用通知中心，失败回退到 Qt 系统托盘通知。
 - **Dock 徽标**：使用 `NSApp.dockTile` 在离线等状态下显示 `!`。
 - **离线检测**：每 30 秒向首页做一次 HEAD 探测，校园网强制门户 / DNS 故障也能即时在状态栏和通知中显示。
@@ -94,7 +95,8 @@ src/overleaf_client/
 │   ├── styles.py       # 全局参数化 QSS 样式表
 │   └── preferences.py  # iTerm 风格 Tab 布局的偏好设置对话框
 └── platforms/mac/
-    └── dock.py         # Dock 徽标助手
+    ├── dock.py         # Dock 徽标助手
+    └── idle.py         # CoreGraphics 系统空闲检测（ctypes）
 ```
 
 三层之间严格单向依赖：`app.py` 负责组装；UI 依赖 core；`platforms/mac` 可选且从不被 `core/` 反向依赖。

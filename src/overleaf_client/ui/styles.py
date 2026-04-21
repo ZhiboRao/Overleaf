@@ -116,6 +116,17 @@ QStatusBar::item {{
     border: none;
 }}
 
+QLabel#StatusClock, QLabel#StatusWork {{
+    color: palette(text);
+    padding: 0 10px;
+    font-size: {status_pt}pt;
+    font-family: "SF Mono", Menlo, Monaco, monospace;
+}}
+
+QLabel#StatusWork {{
+    border-right: 1px solid palette(mid);
+}}
+
 /* ---------------------------------------------------------------- Buttons */
 QPushButton {{
     padding: 7px 18px;

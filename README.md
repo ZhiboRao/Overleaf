@@ -27,6 +27,7 @@ Overleaf ships as a web app only. This project gives you a real Mac app — its 
   - Base font size (12–24 pt, re-applied live)
   - Window opacity for Preferences / Downloads (50–100 %, previewed as you drag)
   - Toolbar row height (padding 2–14 px)
+- **Status bar clock + work timer** — the right side of the status bar shows the current wall-clock time and how long you've *actually* been working in the window this session. The counter pauses automatically when the window is hidden, when another app is frontmost, or when no keyboard / mouse / trackpad input has been seen for 2 minutes; it resumes the moment you touch something. Idle detection uses macOS's `CGEventSourceSecondsSinceLastEventType` via `ctypes` (no extra dependency).
 - **System notifications** via `osascript` (Notification Center fallback).
 - **Dock badge** (e.g. `!` when offline) via `NSApp.dockTile`.
 - **Offline detection** — probes the home URL every 30 s so captive-portal / DNS failures surface as a status bar and notification.
@@ -94,7 +95,8 @@ src/overleaf_client/
 │   ├── styles.py       # Global parameterized QSS stylesheet
 │   └── preferences.py  # iTerm-style tabbed preferences dialog
 └── platforms/mac/
-    └── dock.py         # NSApp.dockTile badge helper
+    ├── dock.py         # NSApp.dockTile badge helper
+    └── idle.py         # CoreGraphics idle-time probe (ctypes)
 ```
 
 The three layers communicate one-way downward: `app.py` owns the dependency graph; UI imports core; `platforms/mac` is optional and never imported from `core/`.

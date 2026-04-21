@@ -140,6 +140,9 @@ _ZH: Final[dict[str, str]] = {
     "Password:": "密码:",
     "Credentials saved to Keychain": "凭据已保存至钥匙串",
     "Could not save to Keychain.": "无法写入钥匙串。",
+
+    # ---- Status bar --------------------------------------------------
+    "Work": "工作",
 }
 
 

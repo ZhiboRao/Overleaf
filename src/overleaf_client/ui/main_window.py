@@ -6,14 +6,17 @@
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Callable
+from datetime import datetime
 
-from PySide6.QtCore import QSize, Qt, QUrl, Slot
+from PySide6.QtCore import QSize, Qt, QTimer, QUrl, Slot
 from PySide6.QtGui import QAction, QCloseEvent, QIcon, QKeySequence
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
     QApplication,
     QInputDialog,
+    QLabel,
     QLineEdit,
     QMainWindow,
     QMessageBox,
@@ -33,6 +36,7 @@ from overleaf_client.core.browser import (
 from overleaf_client.core.config import ConfigManager
 from overleaf_client.core.credentials import Credential, CredentialStore
 from overleaf_client.core.network import NetworkMonitor
+from overleaf_client.platforms.mac.idle import seconds_since_last_input
 from overleaf_client.ui.downloads import DownloadsPanel
 from overleaf_client.ui.notifications import Notifier
 from overleaf_client.ui.preferences import PreferencesDialog
@@ -47,6 +51,12 @@ class MainWindow(QMainWindow):
 
     承载 Overleaf Web App 的主浏览器窗口。
     """
+
+    # After this many seconds with no keyboard/mouse/trackpad input the
+    # session is considered idle and the work-time counter pauses.
+    # Resumes immediately on the next input event.
+    # 连续无输入达该秒数即视为空闲，工作计时暂停；有输入立即恢复。
+    _IDLE_THRESHOLD_S: float = 120.0
 
     def __init__(
         self,
@@ -113,6 +123,40 @@ class MainWindow(QMainWindow):
         self._status = QStatusBar(self)
         self.setStatusBar(self._status)
         self._status.showMessage(i18n.t("Loading…"), 3_000)
+
+        # Session work-time tracking. The 1 Hz tick below decides on every
+        # frame whether this moment should count as "working": the window
+        # must be visible AND focused AND the system must have seen input
+        # within the last ``_IDLE_THRESHOLD_S`` seconds. While active,
+        # ``_work_started_at`` holds the start of the current interval;
+        # while paused it is ``None`` and ``_work_accumulated`` holds the
+        # total credited so far. The counter is process-lifetime only;
+        # quitting resets it.
+        # 会话级工作时间。1Hz 计时器每帧判断当下是否算"工作"：窗口可见
+        # + 窗口激活 + 系统最近 ``_IDLE_THRESHOLD_S`` 秒有输入。活跃时
+        # ``_work_started_at`` 记录当前段起点；暂停时为 None，已计时长
+        # 累加到 ``_work_accumulated``。仅进程内有效，退出即清零。
+        self._work_started_at: float | None = None
+        self._work_accumulated: float = 0.0
+
+        self._clock_label = QLabel("")
+        self._clock_label.setObjectName("StatusClock")
+        self._work_label = QLabel("")
+        self._work_label.setObjectName("StatusWork")
+        # Permanent widgets live on the right side of the status bar and
+        # survive transient messages (loading text, URL previews).
+        # permanent widget 在右侧，不会被 showMessage 的瞬时文字覆盖。
+        self._status.addPermanentWidget(self._work_label)
+        self._status.addPermanentWidget(self._clock_label)
+
+        self._status_timer = QTimer(self)
+        self._status_timer.setInterval(1000)
+        self._status_timer.timeout.connect(self._refresh_status_clocks)
+        self._status_timer.start()
+        # Paint the first frame synchronously so the labels aren't blank
+        # for the first tick.
+        # 主动刷一次，避免首帧空白。
+        self._refresh_status_clocks()
 
         self._toolbar_actions: list[tuple[QAction, str, str]] = []
         self._toolbar = self._build_toolbar()
@@ -316,6 +360,72 @@ class MainWindow(QMainWindow):
         for action, label_key, tooltip_key in self._toolbar_actions:
             action.setText(i18n.t(label_key))
             action.setToolTip(i18n.t(tooltip_key))
+        # The work-time prefix ("Work" / "工作") must follow the new
+        # language immediately rather than wait for the next tick.
+        # 工作时间前缀立刻随新语言更新，不必等下一次 tick。
+        self._refresh_status_clocks()
+
+    # ----------------------------------------------------------- Status bar
+    def _is_working_now(self) -> bool:
+        """Whether this moment should count toward work time.
+
+        当前这一瞬是否应计入工作时长。
+
+        True requires all of: window is visible, this window is the
+        active (frontmost) window, and the system saw keyboard/mouse
+        input within the last ``_IDLE_THRESHOLD_S`` seconds.
+        需同时满足：窗口可见、窗口为前台激活窗口、系统在阈值时间内
+        检测到输入。
+        """
+        if not self.isVisible() or self.isMinimized():
+            return False
+        if not self.isActiveWindow():
+            return False
+        return seconds_since_last_input() < self._IDLE_THRESHOLD_S
+
+    def _work_elapsed_seconds(self) -> float:
+        """Seconds accumulated so far across all counted intervals.
+
+        目前累计的工作秒数。
+        """
+        elapsed = self._work_accumulated
+        if self._work_started_at is not None:
+            elapsed += time.monotonic() - self._work_started_at
+        return elapsed
+
+    @Slot()
+    def _refresh_status_clocks(self) -> None:
+        """Update the tracker state and redraw the status-bar labels.
+
+        每秒刷新计时状态与状态栏文字。
+        """
+        # Step 1: flip the active/paused state based on the latest
+        # visibility + focus + system-idle signals.
+        # 先根据窗口可见/激活与系统空闲更新计时状态。
+        now_monotonic = time.monotonic()
+        working = self._is_working_now()
+        if working and self._work_started_at is None:
+            self._work_started_at = now_monotonic
+        elif not working and self._work_started_at is not None:
+            delta = now_monotonic - self._work_started_at
+            # If we're pausing because the user went idle, back out the
+            # grace window so idle seconds don't get credited.
+            # 若是因空闲而暂停，扣掉宽限期的时长，避免空转时间计入。
+            idle_s = seconds_since_last_input()
+            if idle_s >= self._IDLE_THRESHOLD_S:
+                delta = max(0.0, delta - idle_s)
+            self._work_accumulated += delta
+            self._work_started_at = None
+
+        # Step 2: redraw labels.
+        # 再更新文字。
+        clock = datetime.now().strftime("%H:%M:%S")
+        total = int(self._work_elapsed_seconds())
+        hours, rem = divmod(total, 3600)
+        minutes, seconds = divmod(rem, 60)
+        work = f"{hours}:{minutes:02d}:{seconds:02d}"
+        self._clock_label.setText(clock)
+        self._work_label.setText(f"{i18n.t('Work')}: {work}")
 
     # --------------------------------------------------------------- Qt hooks
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
