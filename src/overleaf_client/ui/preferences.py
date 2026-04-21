@@ -3,11 +3,14 @@
 偏好设置对话框。
 
 The layout follows iTerm2's preferences: a horizontal tab strip at the
-top with underline indicator for the current page, and the page content
-below. Each page hosts a tight form so related settings stay grouped.
+top with an underline indicator for the current page, and the page
+content below. Each page hosts a tight form so related settings stay
+grouped. All user-visible strings go through :func:`i18n.t` so the
+dialog follows the active UI language.
 
 布局参考 iTerm2：顶部横向 tab 条（选中项下方加蓝色下划线），下方是
-当前页内容。每页只放一类相关设置，保持聚焦。
+当前页内容。每页只放一类相关设置，保持聚焦。所有文案通过
+:func:`i18n.t` 取值，跟随当前界面语言。
 """
 
 from __future__ import annotations
@@ -35,6 +38,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from overleaf_client.core import i18n
 from overleaf_client.core.config import ConfigManager
 from overleaf_client.core.credentials import CredentialStore
 
@@ -59,7 +63,7 @@ class PreferencesDialog(QDialog):
             parent: Optional parent widget.
         """
         super().__init__(parent)
-        self.setWindowTitle("Preferences / 偏好设置")
+        self.setWindowTitle(i18n.t("Preferences"))
         self.setFixedSize(680, 600)
         self._config_manager = config_manager
         self._credential_store = credential_store
@@ -77,13 +81,11 @@ class PreferencesDialog(QDialog):
         tabs.tabBar().setExpanding(False)
         tabs.tabBar().setDrawBase(False)
 
-        tabs.addTab(self._build_general_page(), "General / 通用")
-        tabs.addTab(self._build_appearance_page(), "Appearance / 外观")
-        tabs.addTab(self._build_downloads_page(), "Downloads / 下载")
-        tabs.addTab(
-            self._build_notifications_page(), "Notifications / 通知",
-        )
-        tabs.addTab(self._build_credentials_page(), "Credentials / 凭据")
+        tabs.addTab(self._build_general_page(), i18n.t("General"))
+        tabs.addTab(self._build_appearance_page(), i18n.t("Appearance"))
+        tabs.addTab(self._build_downloads_page(), i18n.t("Downloads"))
+        tabs.addTab(self._build_notifications_page(), i18n.t("Notifications"))
+        tabs.addTab(self._build_credentials_page(), i18n.t("Credentials"))
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok
@@ -113,14 +115,13 @@ class PreferencesDialog(QDialog):
         self._zoom.setDecimals(2)
         self._zoom.setValue(cfg.zoom_factor)
 
-        # The language choice also picks which Overleaf mirror to visit:
-        #   zh → cn.overleaf.com (Chinese; usually faster in China)
-        #   en → www.overleaf.com (English)
-        #   auto → use Home URL unchanged (for self-hosted instances).
-        # 语言选项同时决定访问哪个 Overleaf 镜像：zh → cn.overleaf.com；
-        # en → www.overleaf.com；auto → 使用上方 Home URL（自建实例）。
+        # The language option drives BOTH UI text and which Overleaf mirror
+        # we visit. Labels stay bilingual here so users who can't yet read
+        # the current UI can still find the language they want.
+        # 语言选项同时决定界面文本和 Overleaf 镜像；此处标签保持中英双语，
+        # 以便看不懂当前语言的用户也能找到目标语言。
         self._language_choices: list[tuple[str, str]] = [
-            ("auto", "Auto (use Home URL) / 自动（按首页地址）"),
+            ("auto", "Auto / 自动（跟随系统）"),
             ("en", "English — www.overleaf.com"),
             ("zh", "中文 — cn.overleaf.com"),
         ]
@@ -135,18 +136,15 @@ class PreferencesDialog(QDialog):
         self._language.setCurrentIndex(current_idx)
 
         self._notifications = QCheckBox(
-            "Enable system notifications / 启用系统通知",
+            i18n.t("Enable system notifications"),
         )
         self._notifications.setChecked(cfg.enable_notifications)
 
-        self._dock_badge = QCheckBox(
-            "Enable Dock badge / 启用 Dock 徽标",
-        )
+        self._dock_badge = QCheckBox(i18n.t("Enable Dock badge"))
         self._dock_badge.setChecked(cfg.enable_dock_badge)
 
         self._autosave_creds = QCheckBox(
-            "Offer to save credentials in Keychain / "
-            "提示将凭据保存至钥匙串",
+            i18n.t("Offer to save credentials in Keychain"),
         )
         self._autosave_creds.setChecked(cfg.autosave_credentials)
 
@@ -229,27 +227,26 @@ class PreferencesDialog(QDialog):
         layout = self._page_layout(page)
 
         layout.addLayout(self._title(
-            "General / 通用",
-            "Browser basics and appearance / 浏览器基础设置与外观",
+            i18n.t("General"),
+            i18n.t("Browser basics and appearance"),
         ))
 
-        layout.addWidget(self._section("NAVIGATION / 导航"))
+        layout.addWidget(self._section(i18n.t("NAVIGATION")))
         nav_form = self._new_form()
-        nav_form.addRow("Home URL / 首页地址", self._home_url)
-        nav_form.addRow("Language / 语言", self._language)
+        nav_form.addRow(i18n.t("Home URL"), self._home_url)
+        nav_form.addRow(i18n.t("Language"), self._language)
         layout.addLayout(nav_form)
 
-        layout.addWidget(self._section("DISPLAY / 显示"))
+        layout.addWidget(self._section(i18n.t("DISPLAY")))
         display_form = self._new_form()
-        display_form.addRow("Zoom factor / 缩放比例", self._zoom)
+        display_form.addRow(i18n.t("Zoom factor"), self._zoom)
         layout.addLayout(display_form)
 
         layout.addWidget(self._divider())
-        layout.addWidget(self._hint(
-            "Language also switches the Overleaf deployment "
-            "(中文 → cn, English → www).\n"
-            "语言选项同时切换访问的 Overleaf 镜像。",
-        ))
+        layout.addWidget(self._hint(i18n.t(
+            "Language switches both UI text and the Overleaf mirror "
+            "(中文 → cn.overleaf.com, English → www.overleaf.com).",
+        )))
         layout.addStretch(1)
         return page
 
@@ -258,40 +255,34 @@ class PreferencesDialog(QDialog):
         layout = self._page_layout(page)
 
         layout.addLayout(self._title(
-            "Appearance / 外观",
-            "Font size and window translucency / 字体大小与窗口透明度",
+            i18n.t("Appearance"),
+            i18n.t("Font size and window translucency"),
         ))
 
-        layout.addWidget(self._section("TYPOGRAPHY / 字体"))
+        layout.addWidget(self._section(i18n.t("TYPOGRAPHY")))
         font_form = self._new_form()
-        font_form.addRow("Base size / 基准字号", self._font_size)
+        font_form.addRow(i18n.t("Base size"), self._font_size)
         layout.addLayout(font_form)
 
-        layout.addWidget(self._section("LAYOUT / 布局"))
+        layout.addWidget(self._section(i18n.t("LAYOUT")))
         layout_form = self._new_form()
-        layout_form.addRow(
-            "Toolbar height / 工具栏高度", self._toolbar_padding,
-        )
+        layout_form.addRow(i18n.t("Toolbar height"), self._toolbar_padding)
         layout.addLayout(layout_form)
 
-        layout.addWidget(self._section("TRANSLUCENCY / 透明度"))
+        layout.addWidget(self._section(i18n.t("TRANSLUCENCY")))
         opacity_row = QHBoxLayout()
         opacity_row.setSpacing(12)
         opacity_row.addWidget(self._opacity_slider, 1)
         opacity_row.addWidget(self._opacity_value)
         opacity_form = self._new_form()
-        opacity_form.addRow(
-            "Window opacity / 窗口不透明度", opacity_row,
-        )
+        opacity_form.addRow(i18n.t("Window opacity"), opacity_row)
         layout.addLayout(opacity_form)
 
         layout.addWidget(self._divider())
-        layout.addWidget(self._hint(
+        layout.addWidget(self._hint(i18n.t(
             "Opacity applies to Preferences and Downloads; "
-            "the main browser window stays fully opaque for readability.\n"
-            "透明度仅作用于偏好设置与下载面板；主浏览器窗口保持不透明"
-            "以便阅读正文。",
-        ))
+            "the main browser window stays fully opaque for readability.",
+        )))
         layout.addStretch(1)
         return page
 
@@ -300,28 +291,26 @@ class PreferencesDialog(QDialog):
         layout = self._page_layout(page)
 
         layout.addLayout(self._title(
-            "Downloads / 下载",
-            "Where files go when you save them / "
-            "下载保存位置",
+            i18n.t("Downloads"),
+            i18n.t("Where files go when you save them"),
         ))
 
-        browse = QPushButton("Browse… / 浏览…")
+        browse = QPushButton(i18n.t("Browse…"))
         browse.clicked.connect(self._pick_download_dir)
         dir_row = QHBoxLayout()
         dir_row.setSpacing(8)
         dir_row.addWidget(self._download_dir, 1)
         dir_row.addWidget(browse)
 
-        layout.addWidget(self._section("LOCATION / 位置"))
+        layout.addWidget(self._section(i18n.t("LOCATION")))
         form = self._new_form()
-        form.addRow("Download dir / 下载目录", dir_row)
+        form.addRow(i18n.t("Download dir"), dir_row)
         layout.addLayout(form)
 
         layout.addWidget(self._divider())
-        layout.addWidget(self._hint(
-            "Leave empty to use the default ~/Downloads folder.\n"
-            "留空则使用默认的 ~/Downloads。",
-        ))
+        layout.addWidget(self._hint(i18n.t(
+            "Leave empty to use the default ~/Downloads folder.",
+        )))
         layout.addStretch(1)
         return page
 
@@ -330,20 +319,19 @@ class PreferencesDialog(QDialog):
         layout = self._page_layout(page)
 
         layout.addLayout(self._title(
-            "Notifications / 通知",
-            "System alerts and Dock feedback / 系统通知与 Dock 状态",
+            i18n.t("Notifications"),
+            i18n.t("System alerts and Dock feedback"),
         ))
 
-        layout.addWidget(self._section("ALERTS / 提醒"))
+        layout.addWidget(self._section(i18n.t("ALERTS")))
         layout.addWidget(self._notifications)
         layout.addWidget(self._dock_badge)
 
         layout.addWidget(self._divider())
-        layout.addWidget(self._hint(
+        layout.addWidget(self._hint(i18n.t(
             "Notifications use macOS Notification Center via osascript, "
-            "falling back to the tray icon.\n"
-            "通知通过 osascript 调用 macOS 通知中心，失败回退到托盘通知。",
-        ))
+            "falling back to the tray icon.",
+        )))
         layout.addStretch(1)
         return page
 
@@ -352,16 +340,14 @@ class PreferencesDialog(QDialog):
         layout = self._page_layout(page)
 
         layout.addLayout(self._title(
-            "Credentials / 凭据",
-            "How saved logins are handled / 已保存登录的处理方式",
+            i18n.t("Credentials"),
+            i18n.t("How saved logins are handled"),
         ))
 
-        layout.addWidget(self._section("KEYCHAIN / 钥匙串"))
+        layout.addWidget(self._section(i18n.t("KEYCHAIN")))
         layout.addWidget(self._autosave_creds)
 
-        clear_creds = QPushButton(
-            "Clear saved credentials / 清除已保存凭据",
-        )
+        clear_creds = QPushButton(i18n.t("Clear saved credentials"))
         clear_creds.clicked.connect(self._clear_credentials)
         clear_row = QHBoxLayout()
         clear_row.addWidget(clear_creds)
@@ -369,12 +355,10 @@ class PreferencesDialog(QDialog):
         layout.addLayout(clear_row)
 
         layout.addWidget(self._divider())
-        layout.addWidget(self._hint(
+        layout.addWidget(self._hint(i18n.t(
             "Credentials are stored in the macOS Keychain under service "
-            "\"com.zhiborao.overleafclient\".\n"
-            "凭据保存在 macOS 钥匙串，服务名 "
-            "\"com.zhiborao.overleafclient\"。",
-        ))
+            "\"com.zhiborao.overleafclient\".",
+        )))
         layout.addStretch(1)
         return page
 
@@ -384,7 +368,7 @@ class PreferencesDialog(QDialog):
             Path.home() / "Downloads",
         )
         chosen = QFileDialog.getExistingDirectory(
-            self, "Choose download directory / 选择下载目录", initial,
+            self, i18n.t("Choose download directory"), initial,
         )
         if chosen:
             self._download_dir.setText(chosen)

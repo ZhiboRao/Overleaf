@@ -2,14 +2,15 @@
 
 下载面板 UI。
 
-A floating tool window that lists active and recently completed downloads.
-The layout is inspired by Motrix: a file-type badge on the left, filename
-+ path in the middle with a thin progress bar beneath a status line
-(size, speed, ETA), and a prominent percentage on the right.
+Laid out like a Preferences page (title + subtitle, SECTION label, form
+area, divider, hint, footer button row) so Preferences and Downloads
+share the same chrome. Inside the SECTION the cards themselves still
+follow Motrix's per-transfer design: file-type badge, filename + path,
+thin progress bar, and a prominent percentage.
 
-浮动工具窗口，展示正在进行和刚完成的下载。布局参考 Motrix：左侧文件
-类型徽标，中间文件名 + 路径、细进度条、下方状态行（大小/速度/剩余
-时间），右侧大号百分比。
+外层结构沿用偏好设置的"页"形式（大标题+副标题、分组标签、内容区、
+分隔线、提示、底部按钮行），让两个窗口视觉一致。分组内部的每张下载
+卡片仍参考 Motrix：文件类型徽标、文件名与路径、细进度条、大号百分比。
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from PySide6.QtGui import QDesktopServices
 from PySide6.QtWebEngineCore import QWebEngineDownloadRequest
 from PySide6.QtWidgets import (
     QDialog,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QProgressBar,
@@ -31,6 +33,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from overleaf_client.core import i18n
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -181,16 +185,16 @@ class DownloadItemWidget(QWidget):
         self._progress.setValue(0)
         self._progress.setTextVisible(False)
 
-        self._status_label = QLabel("Starting… / 正在开始…")
+        self._status_label = QLabel(i18n.t("Starting…"))
         self._status_label.setObjectName("DownloadCardStatus")
 
-        self._cancel_button = QPushButton("Cancel / 取消")
+        self._cancel_button = QPushButton(i18n.t("Cancel"))
         self._cancel_button.setObjectName("DownloadCardAction")
         self._cancel_button.clicked.connect(self._on_cancel)
 
-        self._reveal_button = QPushButton("Show / 显示")
+        self._reveal_button = QPushButton(i18n.t("Show"))
         self._reveal_button.setObjectName("DownloadCardAction")
-        self._reveal_button.setToolTip("Reveal in Finder / 在 Finder 中显示")
+        self._reveal_button.setToolTip(i18n.t("Reveal in Finder"))
         self._reveal_button.clicked.connect(self._on_reveal)
         self._reveal_button.hide()
 
@@ -278,7 +282,8 @@ class DownloadItemWidget(QWidget):
             remaining = total - received
             if speed > 0 and remaining > 0:
                 parts.append(
-                    f"{_format_duration(int(remaining / speed))} left",
+                    f"{_format_duration(int(remaining / speed))} "
+                    f"{i18n.t('left')}",
                 )
             self._status_label.setText("  ·  ".join(parts))
         else:
@@ -287,7 +292,7 @@ class DownloadItemWidget(QWidget):
             self._progress.setRange(0, 0)
             self._percent_label.setText("—")
             parts = [
-                f"{_format_bytes(received)} downloaded",
+                f"{_format_bytes(received)} {i18n.t('downloaded')}",
                 f"{_format_bytes(int(speed))}/s",
             ]
             self._status_label.setText("  ·  ".join(parts))
@@ -304,7 +309,7 @@ class DownloadItemWidget(QWidget):
             self._percent_label.setText("100%")
             size = _format_bytes(self._download.totalBytes())
             self._set_status(
-                f"Completed — {size} / 已完成", flavor="ok",
+                f"{i18n.t('Completed')} — {size}", flavor="ok",
             )
             self._cancel_button.hide()
             self._reveal_button.show()
@@ -312,14 +317,15 @@ class DownloadItemWidget(QWidget):
             self._progress.setRange(0, 100)
             self._progress.setValue(0)
             self._percent_label.setText("—")
-            self._set_status("Cancelled / 已取消")
+            self._set_status(i18n.t("Cancelled"))
             self._cancel_button.hide()
         elif state == states.DownloadInterrupted:
             self._progress.setRange(0, 100)
             self._percent_label.setText("—")
             reason = self._download.interruptReasonString() or "interrupted"
             self._set_status(
-                f"Failed: {reason} / 已中断", flavor="error",
+                i18n.t("Failed: {reason}").format(reason=reason),
+                flavor="error",
             )
             self._cancel_button.hide()
 
@@ -345,6 +351,21 @@ class DownloadItemWidget(QWidget):
             QUrl.fromLocalFile(str(self._target_path.parent)),
         )
 
+    def retranslate(self) -> None:
+        """Re-apply translations to the static labels on this card.
+
+        刷新卡片上静态文字（按钮、起始状态、工具提示）的翻译。
+
+        Running transfer details (speed / bytes) repaint themselves on the
+        next tick, so we only touch the labels that would otherwise stay
+        frozen in the previous language.
+        进度中的速度/字节数会在下一次 tick 自动重绘；这里只刷新那些
+        否则会停留在旧语言的静态标签。
+        """
+        self._cancel_button.setText(i18n.t("Cancel"))
+        self._reveal_button.setText(i18n.t("Show"))
+        self._reveal_button.setToolTip(i18n.t("Reveal in Finder"))
+
 
 class DownloadsPanel(QDialog):
     """Floating tool window listing all downloads for this session.
@@ -356,20 +377,42 @@ class DownloadsPanel(QDialog):
         """Initialize the panel (hidden until the first download)."""
         super().__init__(parent)
         self.setObjectName("DownloadsPanelRoot")
-        self.setWindowTitle("Downloads / 下载")
-        self.setWindowFlag(Qt.WindowType.Tool, True)
+        self.setWindowTitle(i18n.t("Downloads"))
+        # Plain non-modal QDialog (no Qt.Tool): on macOS the Tool flag
+        # makes the window render as an NSPanel with a skinny utility
+        # title bar, which visually shrinks the frame compared to
+        # Preferences. A plain dialog gets the same chrome as
+        # Preferences so the two windows match in size and weight.
+        # 保持普通非模态 QDialog（不设 Qt.Tool）：Tool 标志在 macOS 上
+        # 会让窗口按 NSPanel 渲染成纤细工具窗，整体比 Preferences 小
+        # 一圈；去掉后两者窗框一致。
         self.setModal(False)
         # Opacity is driven by user preference; applied from the outside.
         # 不透明度由用户设置驱动，由外部在创建/保存时设置。
-        self.setFixedSize(720, 520)
+        self.setFixedSize(680, 600)
 
-        header = QLabel("Downloads")
-        header.setObjectName("DownloadsPanelHeader")
-        subheader = QLabel("下载管理")
-        subheader.setObjectName("DownloadsPanelSubheader")
+        # ---- Title + subtitle (same chrome as Preferences pages) ----
+        self._title_label = QLabel(i18n.t("Downloads"))
+        self._title_label.setObjectName("PrefPageTitle")
+        self._subtitle_label = QLabel(
+            i18n.t("Active and recent file transfers"),
+        )
+        self._subtitle_label.setObjectName("PrefPageSubtitle")
+        self._subtitle_label.setWordWrap(True)
 
+        title_box = QVBoxLayout()
+        title_box.setContentsMargins(0, 0, 0, 6)
+        title_box.setSpacing(2)
+        title_box.addWidget(self._title_label)
+        title_box.addWidget(self._subtitle_label)
+
+        # ---- Section label above the list ----
+        self._section_label = QLabel(i18n.t("TRANSFERS"))
+        self._section_label.setObjectName("PrefSectionLabel")
+
+        # ---- Scrollable list of download cards ----
         self._items_layout = QVBoxLayout()
-        self._items_layout.setContentsMargins(20, 0, 20, 20)
+        self._items_layout.setContentsMargins(0, 0, 0, 0)
         self._items_layout.setSpacing(12)
         self._items_layout.addStretch(1)
 
@@ -379,11 +422,9 @@ class DownloadsPanel(QDialog):
         self._scroll = QScrollArea()
         self._scroll.setWidget(container)
         # ``WidgetResizable`` lets the inner column stretch to the viewport
-        # width while still respecting the cards' own minimum sizes, so a
-        # card with an unusually long filename forces the horizontal
-        # scrollbar to appear (policy below) instead of silently clipping.
+        # width while still respecting the cards' own minimum sizes.
         # WidgetResizable 让内容宽度跟随 viewport，但卡片的最小宽度仍被
-        # 尊重：超宽文件名会触发下方的水平滚动条，而不是被悄悄裁掉。
+        # 尊重：超宽文件名会触发水平滚动条而不是被悄悄裁掉。
         self._scroll.setWidgetResizable(True)
         self._scroll.setFrameShape(QScrollArea.Shape.NoFrame)
         self._scroll.setHorizontalScrollBarPolicy(
@@ -393,39 +434,65 @@ class DownloadsPanel(QDialog):
             Qt.ScrollBarPolicy.ScrollBarAsNeeded,
         )
 
-        empty_icon = QLabel("⇣")
-        empty_icon.setObjectName("DownloadsEmptyTitle")
-        empty_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        empty_text = QLabel("No downloads yet / 暂无下载")
-        empty_text.setObjectName("DownloadsEmptyLabel")
-        empty_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # ---- Empty-state placeholder ----
+        self._empty_icon = QLabel("⇣")
+        self._empty_icon.setObjectName("DownloadsEmptyTitle")
+        self._empty_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._empty_label = QLabel(i18n.t("No downloads yet"))
+        self._empty_label.setObjectName("DownloadsEmptyLabel")
+        self._empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self._empty_container = QWidget()
         empty_box = QVBoxLayout(self._empty_container)
-        empty_box.setContentsMargins(20, 40, 20, 40)
+        empty_box.setContentsMargins(20, 30, 20, 30)
         empty_box.setSpacing(12)
         empty_box.addStretch(1)
-        empty_box.addWidget(empty_icon)
-        empty_box.addWidget(empty_text)
+        empty_box.addWidget(self._empty_icon)
+        empty_box.addWidget(self._empty_label)
         empty_box.addStretch(2)
 
-        self._clear_button = QPushButton("Clear completed / 清除已完成")
-        self._clear_button.clicked.connect(self._clear_completed)
+        # ---- Divider + hint (same as Preferences pages) ----
+        self._divider = QFrame()
+        self._divider.setObjectName("PrefDivider")
+        self._divider.setFrameShape(QFrame.Shape.NoFrame)
 
-        bottom = QHBoxLayout()
-        bottom.setContentsMargins(20, 10, 20, 16)
-        bottom.addStretch(1)
-        bottom.addWidget(self._clear_button)
+        self._hint_label = QLabel(i18n.t(
+            "Completed and cancelled items can be cleared at any time.",
+        ))
+        self._hint_label.setObjectName("PrefHintLabel")
+        self._hint_label.setWordWrap(True)
+
+        # ---- Page body stacks title → section → content → hint ----
+        page = QWidget()
+        page_layout = QVBoxLayout(page)
+        page_layout.setContentsMargins(44, 32, 44, 14)
+        page_layout.setSpacing(14)
+        page_layout.addLayout(title_box)
+        page_layout.addWidget(self._section_label)
+        page_layout.addWidget(self._empty_container, 1)
+        page_layout.addWidget(self._scroll, 1)
+        page_layout.addWidget(self._divider)
+        page_layout.addWidget(self._hint_label)
+        self._scroll.hide()
+
+        # ---- Footer button row (aligns with Preferences Ok/Cancel row) ----
+        self._clear_button = QPushButton(i18n.t("Clear completed"))
+        self._clear_button.clicked.connect(self._clear_completed)
+        self._close_button = QPushButton(i18n.t("Close"))
+        self._close_button.setDefault(True)
+        self._close_button.clicked.connect(self.hide)
+
+        button_row = QHBoxLayout()
+        button_row.setContentsMargins(24, 14, 24, 20)
+        button_row.addWidget(self._clear_button)
+        button_row.addStretch(1)
+        button_row.addWidget(self._close_button)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        layout.addWidget(header)
-        layout.addWidget(subheader)
-        layout.addWidget(self._empty_container, 1)
-        layout.addWidget(self._scroll, 1)
-        layout.addLayout(bottom)
-        self._scroll.hide()
+        layout.addWidget(page, 1)
+        layout.addLayout(button_row)
 
         self._items: list[tuple[
             QWebEngineDownloadRequest, DownloadItemWidget,
@@ -467,3 +534,20 @@ class DownloadsPanel(QDialog):
         if not self._items:
             self._scroll.hide()
             self._empty_container.show()
+
+    def retranslate(self) -> None:
+        """Re-apply translations to static labels / 刷新静态文案翻译."""
+        self.setWindowTitle(i18n.t("Downloads"))
+        self._title_label.setText(i18n.t("Downloads"))
+        self._subtitle_label.setText(
+            i18n.t("Active and recent file transfers"),
+        )
+        self._section_label.setText(i18n.t("TRANSFERS"))
+        self._empty_label.setText(i18n.t("No downloads yet"))
+        self._hint_label.setText(i18n.t(
+            "Completed and cancelled items can be cleared at any time.",
+        ))
+        self._clear_button.setText(i18n.t("Clear completed"))
+        self._close_button.setText(i18n.t("Close"))
+        for _, widget in self._items:
+            widget.retranslate()

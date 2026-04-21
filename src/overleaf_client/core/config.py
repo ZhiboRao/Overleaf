@@ -57,11 +57,11 @@ class AppConfig:
             the system keychain.
         download_dir: Default download directory for PDFs/artifacts. If
             ``None``, falls back to ``~/Downloads``.
-        ui_language: Preferred Overleaf deployment. ``"zh"`` routes to
-            ``cn.overleaf.com`` (the Chinese-language site, typically
-            faster in mainland China); ``"en"`` routes to
-            ``www.overleaf.com`` (English). ``"auto"`` uses ``home_url``
-            unchanged so self-hosted deployments keep working.
+        ui_language: UI text language *and* Overleaf mirror selection.
+            ``"en"`` → English UI + ``www.overleaf.com``.
+            ``"zh"`` → Chinese UI + ``cn.overleaf.com``.
+            ``"auto"`` → UI follows the system locale and ``home_url``
+            is used unchanged (so self-hosted deployments keep working).
         ui_font_size: Base font point size applied app-wide via the
             global stylesheet. Downstream sizes (titles, hints,
             download percentages) scale proportionally.

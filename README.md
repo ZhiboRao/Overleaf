@@ -20,7 +20,8 @@ Overleaf ships as a web app only. This project gives you a real Mac app — its 
   - Overleaf's own in-page shortcuts (`⌘↩` Recompile, etc.) keep working.
 - **In-window toolbar** with Back / Forward / Reload / Home / Downloads — readable font with configurable row height.
 - **Close-to-background** (like Claude Desktop / Slack) — the red traffic light hides the main window but keeps the app alive; clicking the Dock icon re-reveals it. `⌘Q` still truly quits.
-- **Downloads panel** — a Motrix-inspired floating panel lists active and completed downloads with colored file-type badges, live speed / ETA, a progress bar, `Cancel`, and `Show in Finder`.
+- **Downloads panel** — shares the same page-style chrome as Preferences (title + subtitle, SECTION label, divider, hint, footer button row) and lists active and completed downloads as Motrix-inspired cards with colored file-type badges, live speed / ETA, a progress bar, `Cancel`, and `Show in Finder`.
+- **Bilingual UI (English / 中文)** — a single **Language** preference (`Auto` follows the system locale / `English` / `中文`) retranslates the toolbar, menus, Preferences dialog, and Downloads panel live with no restart required. The same choice also switches the Overleaf mirror (`www` ↔ `cn`).
 - **Modern global stylesheet** — a single parameterized QSS sheet drives the whole app; sizes scale proportionally from a single base point size so everything (titles, tabs, download cards) stays in visual harmony.
 - **Appearance settings** — in Preferences you can tune:
   - Base font size (12–24 pt, re-applied live)
@@ -29,8 +30,8 @@ Overleaf ships as a web app only. This project gives you a real Mac app — its 
 - **System notifications** via `osascript` (Notification Center fallback).
 - **Dock badge** (e.g. `!` when offline) via `NSApp.dockTile`.
 - **Offline detection** — probes the home URL every 30 s so captive-portal / DNS failures surface as a status bar and notification.
-- **One-click install** (`install.sh`) — venv → py2app → `/Applications`.
-- **Preferences dialog** — iTerm2-style tabbed layout: home URL, zoom factor, **language** (`Auto` / `English` → `www.overleaf.com` / `中文` → `cn.overleaf.com`), download directory, toggle notifications / Dock badge / Keychain autosave.
+- **One-click install** (`install.sh`) — venv → py2app → `/Applications`. Clean up build artifacts with `./clean.sh` (or `./clean.sh --deep` to also drop `.venv/`).
+- **Preferences dialog** — iTerm2-style tabbed layout: home URL, zoom factor, **language** (`Auto` / `English` / `中文` — drives both UI text and the Overleaf mirror), download directory, toggle notifications / Dock badge / Keychain autosave.
 - **Multi-window** support for `target="_blank"` links.
 - **macOS-template app icon** — 1024×1024 canvas with the ~80% rounded-square tile and transparent outer margin Apple's template requires, so the Dock icon sits at the same visual size as stock apps.
 - **Clean layered architecture** — `core/` (framework-agnostic), `ui/` (Qt), `platforms/mac/` (macOS integration).
@@ -81,6 +82,7 @@ src/overleaf_client/
 ├── core/
 │   ├── config.py       # AppConfig + JSON persistence
 │   ├── credentials.py  # Keychain-backed credential store
+│   ├── i18n.py         # UI string catalog + active-language switch
 │   ├── network.py      # Reachability monitor (QNetworkAccessManager)
 │   └── browser.py      # QtWebEngine profile + page
 ├── ui/
@@ -88,7 +90,7 @@ src/overleaf_client/
 │   ├── menu_bar.py     # Native menu construction
 │   ├── shortcuts.py    # JS snippets that drive Overleaf's DOM
 │   ├── notifications.py# osascript + QSystemTrayIcon fallback
-│   ├── downloads.py    # Motrix-inspired downloads panel + per-file cards
+│   ├── downloads.py    # Downloads panel (Preferences-style chrome + Motrix-inspired cards)
 │   ├── styles.py       # Global parameterized QSS stylesheet
 │   └── preferences.py  # iTerm-style tabbed preferences dialog
 └── platforms/mac/

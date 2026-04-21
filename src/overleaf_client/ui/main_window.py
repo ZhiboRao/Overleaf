@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 )
 
 from overleaf_client import APP_NAME
+from overleaf_client.core import i18n
 from overleaf_client.core.browser import (
     OverleafPage,
     OverleafProfile,
@@ -58,6 +59,7 @@ class MainWindow(QMainWindow):
         skip_initial_load: bool = False,
         downloads_panel: DownloadsPanel | None = None,
         hide_on_close: bool = True,
+        on_language_changed: Callable[[], None] | None = None,
     ) -> None:
         """Initialize the main window.
 
@@ -80,6 +82,9 @@ class MainWindow(QMainWindow):
                 the background and the Dock icon brings it back. Child
                 ``window.open`` popups pass ``False`` so they close
                 normally.
+            on_language_changed: Invoked from Preferences when the UI
+                language changes, so the composition root can rebuild
+                the menu bar and retranslate peer windows.
         """
         super().__init__()
         self._config_manager = config_manager
@@ -88,6 +93,7 @@ class MainWindow(QMainWindow):
         self._on_badge_change = on_badge_change
         self._downloads_panel = downloads_panel
         self._hide_on_close = hide_on_close
+        self._on_language_changed = on_language_changed
 
         self.setWindowTitle(APP_NAME)
         self.setWindowIcon(app_icon)
@@ -106,8 +112,9 @@ class MainWindow(QMainWindow):
 
         self._status = QStatusBar(self)
         self.setStatusBar(self._status)
-        self._status.showMessage("Loading… / 正在加载…", 3_000)
+        self._status.showMessage(i18n.t("Loading…"), 3_000)
 
+        self._toolbar_actions: list[tuple[QAction, str, str]] = []
         self._toolbar = self._build_toolbar()
         self.addToolBar(Qt.ToolBarArea.TopToolBarArea, self._toolbar)
 
@@ -131,36 +138,37 @@ class MainWindow(QMainWindow):
         toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
 
         def _add(
-            label: str,
+            label_key: str,
             handler: Callable[[], None],
-            tooltip: str,
+            tooltip_key: str,
             shortcut: QKeySequence | None = None,
         ) -> QAction:
-            action = QAction(label, self)
-            action.setToolTip(tooltip)
+            action = QAction(i18n.t(label_key), self)
+            action.setToolTip(i18n.t(tooltip_key))
             if shortcut is not None:
                 action.setShortcut(shortcut)
             action.triggered.connect(handler)
             toolbar.addAction(action)
             self.addAction(action)  # keeps shortcut active without focus
+            # Remember the source keys so retranslate() can refresh the
+            # label / tooltip without rebuilding the toolbar.
+            # 记录文案键，让 retranslate() 可以直接刷新而无需重建。
+            self._toolbar_actions.append((action, label_key, tooltip_key))
             return action
 
         # Unicode glyphs serve as mini "icons" so the toolbar reads at a
         # glance without shipping extra image assets.
         # Unicode 字符充当迷你图标，无需额外图像资源即可一眼识别。
-        _add("‹  Back", self._view_action_back,
-             "Back / 后退",
+        _add("‹  Back", self._view_action_back, "Back",
              QKeySequence(QKeySequence.StandardKey.Back))
-        _add("Forward  ›", self._view_action_forward,
-             "Forward / 前进",
+        _add("Forward  ›", self._view_action_forward, "Forward",
              QKeySequence(QKeySequence.StandardKey.Forward))
-        _add("⟳  Reload", lambda: self._view.reload(),
-             "Reload / 刷新",
+        _add("⟳  Reload", lambda: self._view.reload(), "Reload",
              QKeySequence(QKeySequence.StandardKey.Refresh))
         toolbar.addSeparator()
-        _add("⌂  Home", self._go_home, "Home / 首页")
+        _add("⌂  Home", self._go_home, "Home")
         if self._downloads_panel is not None:
-            _add("⇣  Downloads", self._show_downloads, "Downloads / 下载")
+            _add("⇣  Downloads", self._show_downloads, "Downloads")
         return toolbar
 
     def _view_action_back(self) -> None:
@@ -184,9 +192,7 @@ class MainWindow(QMainWindow):
     @Slot(bool)
     def _on_load_finished(self, ok: bool) -> None:
         if not ok:
-            self._notifier.notify(
-                APP_NAME, "Page failed to load / 页面加载失败",
-            )
+            self._notifier.notify(APP_NAME, i18n.t("Page failed to load"))
             return
         # If we're on a login page, offer to autofill from Keychain.
         # 若当前在登录页，从钥匙串取出凭据自动填充。
@@ -203,9 +209,8 @@ class MainWindow(QMainWindow):
 
     @Slot(bool)
     def _on_network_changed(self, online: bool) -> None:
-        message = (
-            "Back online / 已恢复网络"
-            if online else "You appear to be offline / 网络已断开"
+        message = i18n.t(
+            "Back online" if online else "You appear to be offline",
         )
         self._status.showMessage(message, 5_000)
         if self._config_manager.config.enable_notifications:
@@ -231,26 +236,25 @@ class MainWindow(QMainWindow):
             return
         email, ok = QInputDialog.getText(
             self, APP_NAME,
-            "Email (leave empty to skip) / 邮箱（留空则跳过）:",
+            i18n.t("Email (leave empty to skip):"),
             QLineEdit.EchoMode.Normal,
         )
         if not ok or not email:
             return
         password, ok = QInputDialog.getText(
             self, APP_NAME,
-            "Password / 密码:",
+            i18n.t("Password:"),
             QLineEdit.EchoMode.Password,
         )
         if not ok or not password:
             return
         if self._credential_store.save(Credential(email, password)):
             self._notifier.notify(
-                APP_NAME, "Credentials saved to Keychain / 凭据已保存",
+                APP_NAME, i18n.t("Credentials saved to Keychain"),
             )
         else:
             QMessageBox.warning(
-                self, APP_NAME,
-                "Could not save to Keychain. / 无法写入钥匙串。",
+                self, APP_NAME, i18n.t("Could not save to Keychain."),
             )
 
     def open_preferences(self) -> None:
@@ -284,15 +288,34 @@ class MainWindow(QMainWindow):
                     cfg.window_opacity / 100.0,
                 )
             if cfg.ui_language != prev_language:
-                # Rewrite the current page's host so the user lands on the
-                # matching Overleaf mirror (cn ↔ www). Login cookies are
-                # per-domain, so a re-login on the other mirror is expected.
-                # 切换语言时，把当前地址换到对应镜像（cn ↔ www）。登录
+                # Flip the active language first so any retranslate()
+                # callbacks below see the new value.
+                # 先切换当前语言，后面的 retranslate() 才能看到新值。
+                i18n.set_language(cfg.ui_language)
+                self.retranslate()
+                if self._downloads_panel is not None:
+                    self._downloads_panel.retranslate()
+                if self._on_language_changed is not None:
+                    self._on_language_changed()
+                # Rewrite the current page's host so the user lands on
+                # the matching Overleaf mirror (cn ↔ www). Login cookies
+                # are per-domain, so a re-login on the other mirror is
+                # expected.
+                # 切换语言时把当前地址换到对应镜像（cn ↔ www）。登录
                 # cookie 按域名隔离，换站后通常需要重新登录。
                 target = localized_url(
                     self._view.url().toString(), cfg.ui_language,
                 )
                 self._view.load(QUrl(target))
+
+    def retranslate(self) -> None:
+        """Re-apply translations to this window's toolbar and status.
+
+        重新翻译本窗口的工具栏与状态栏文案。
+        """
+        for action, label_key, tooltip_key in self._toolbar_actions:
+            action.setText(i18n.t(label_key))
+            action.setToolTip(i18n.t(tooltip_key))
 
     # --------------------------------------------------------------- Qt hooks
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802

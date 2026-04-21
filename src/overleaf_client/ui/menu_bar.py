@@ -4,10 +4,14 @@
 
 Keeping menu construction separate from the window means any future
 window type (preferences-only, secondary project window, etc.) can share
-the same top-level menu without duplicating code.
+the same top-level menu without duplicating code. The function is also
+safe to call again whenever the UI language changes — it calls
+``menu_bar.clear()`` before rebuilding, so the caller can simply invoke
+``build_menu_bar`` a second time to refresh every item's text.
 
 将菜单构造与窗口实现解耦，便于未来的其他窗口（例如仅偏好设置窗口、
-次级项目窗口）复用同一顶层菜单，避免重复代码。
+次级项目窗口）复用同一顶层菜单。语言切换后可再次调用本函数：函数
+内部会先 ``menu_bar.clear()``，再按新语言重建所有项。
 """
 
 from __future__ import annotations
@@ -18,6 +22,7 @@ from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import QMenuBar
 
 from overleaf_client import APP_NAME
+from overleaf_client.core import i18n
 
 
 def _make_action(
@@ -65,37 +70,37 @@ def build_menu_bar(
     # live under). 显式菜单命名便于非 macOS 平台同样可见。
     app_menu = menu_bar.addMenu(APP_NAME)
     app_menu.addAction(_make_action(
-        menu_bar, "About / 关于", None, on_about,
+        menu_bar, i18n.t("About"), None, on_about,
     ))
     app_menu.addSeparator()
     prefs = _make_action(
-        menu_bar, "Preferences… / 偏好设置…",
+        menu_bar, i18n.t("Preferences…"),
         QKeySequence.StandardKey.Preferences, on_open_preferences,
     )
     prefs.setMenuRole(QAction.MenuRole.PreferencesRole)
     app_menu.addAction(prefs)
     app_menu.addSeparator()
     quit_act = _make_action(
-        menu_bar, "Quit / 退出",
+        menu_bar, i18n.t("Quit"),
         QKeySequence.StandardKey.Quit, on_quit,
     )
     quit_act.setMenuRole(QAction.MenuRole.QuitRole)
     app_menu.addAction(quit_act)
 
     # --- View
-    view_menu = menu_bar.addMenu("View / 视图")
+    view_menu = menu_bar.addMenu(i18n.t("View"))
     view_menu.addAction(_make_action(
-        menu_bar, "Reload / 刷新",
+        menu_bar, i18n.t("Reload"),
         QKeySequence.StandardKey.Refresh, on_reload,
     ))
     view_menu.addAction(_make_action(
-        menu_bar, "Toggle Full Screen / 全屏切换",
+        menu_bar, i18n.t("Toggle Full Screen"),
         QKeySequence.StandardKey.FullScreen, on_toggle_fullscreen,
     ))
 
     # --- Account
-    acc_menu = menu_bar.addMenu("Account / 账户")
+    acc_menu = menu_bar.addMenu(i18n.t("Account"))
     acc_menu.addAction(_make_action(
-        menu_bar, "Save Login to Keychain… / 保存登录到钥匙串…",
+        menu_bar, i18n.t("Save Login to Keychain…"),
         None, on_save_credentials,
     ))

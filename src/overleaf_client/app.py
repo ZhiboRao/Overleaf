@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 import signal
 import sys
+from collections.abc import Callable
 from importlib import resources
 from pathlib import Path
 
@@ -24,6 +25,7 @@ from PySide6.QtWebEngineCore import QWebEnginePage
 from PySide6.QtWidgets import QApplication, QMenuBar, QMessageBox
 
 from overleaf_client import APP_BUNDLE_ID, APP_NAME, __version__
+from overleaf_client.core import i18n
 from overleaf_client.core.browser import OverleafPage, OverleafProfile
 from overleaf_client.core.config import ConfigManager
 from overleaf_client.core.credentials import CredentialStore
@@ -123,6 +125,10 @@ def main(argv: list[str] | None = None) -> int:
     app.setWindowIcon(icon)
 
     config_manager = ConfigManager()
+    # Activate the persisted UI language before any widget is built so
+    # every translated label comes out correct on first paint.
+    # 先激活保存的界面语言，后续创建的控件首次渲染时即能显示正确语言。
+    i18n.set_language(config_manager.config.ui_language)
     apply_modern_style(
         app,
         base_pt=config_manager.config.ui_font_size,
@@ -143,6 +149,12 @@ def main(argv: list[str] | None = None) -> int:
         if config_manager.config.enable_dock_badge:
             dock_badge.set_label(label)
 
+    # Forward-declared so MainWindow can call the rebuild callback below
+    # without us having to refer to ``menu_bar`` / ``window`` before they
+    # are constructed. Populated right after ``build_menu_bar``.
+    # 先占位，MainWindow 的重建回调在下方 build_menu_bar 后才真正绑定。
+    _rebuild_menu_bar: Callable[[], None] = lambda: None
+
     window = MainWindow(
         config_manager=config_manager,
         credential_store=credential_store,
@@ -150,6 +162,7 @@ def main(argv: list[str] | None = None) -> int:
         app_icon=icon,
         on_badge_change=_update_badge,
         downloads_panel=downloads_panel,
+        on_language_changed=lambda: _rebuild_menu_bar(),
     )
 
     # Keep child windows alive for the life of the app; without this the
@@ -187,8 +200,8 @@ def main(argv: list[str] | None = None) -> int:
         QMessageBox.about(
             window, APP_NAME,
             f"<b>{APP_NAME}</b> v{__version__}<br><br>"
-            "Unofficial macOS desktop client for Overleaf.<br>"
-            "Overleaf 的非官方 macOS 桌面客户端。<br><br>"
+            f"{i18n.t('Unofficial macOS desktop client for Overleaf.')}"
+            "<br><br>"
             "<a href='https://github.com/ZhiboRao/Overleaf'>GitHub</a>",
         )
 
@@ -201,15 +214,22 @@ def main(argv: list[str] | None = None) -> int:
         else:
             window.showFullScreen()
 
-    build_menu_bar(
-        menu_bar,
-        on_open_preferences=window.open_preferences,
-        on_reload=lambda: window._view.reload(),  # noqa: SLF001
-        on_toggle_fullscreen=_on_toggle_fullscreen,
-        on_save_credentials=window.prompt_save_credentials,
-        on_about=_on_about,
-        on_quit=_on_quit,
-    )
+    def _populate_menu_bar() -> None:
+        build_menu_bar(
+            menu_bar,
+            on_open_preferences=window.open_preferences,
+            on_reload=lambda: window._view.reload(),  # noqa: SLF001
+            on_toggle_fullscreen=_on_toggle_fullscreen,
+            on_save_credentials=window.prompt_save_credentials,
+            on_about=_on_about,
+            on_quit=_on_quit,
+        )
+
+    _populate_menu_bar()
+    # Rebind the forward-declared hook now that everything exists, so
+    # the lambda captured by MainWindow resolves to the real rebuilder.
+    # 所有依赖已就绪，把占位函数换成真正的菜单重建入口。
+    _rebuild_menu_bar = _populate_menu_bar  # noqa: F841
     # Attach to window so the menu bar shows on non-macOS too.
     # 同时挂到窗口上，非 macOS 平台也能看到菜单。
     window.setMenuBar(menu_bar)
