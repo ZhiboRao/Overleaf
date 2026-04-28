@@ -434,6 +434,56 @@ QFrame#PrefDivider {{
     min-height: 1px;
     border: none;
 }}
+
+/* ----------------------------------------------------------- Find bar */
+/* Chrome-style floating card overlaid on the top-right of the page. */
+/* Chrome 风格的浮层卡片，覆盖在页面右上角。 */
+QFrame#FindBar {{
+    background: palette(base);
+    border: 1px solid palette(mid);
+    border-radius: 10px;
+}}
+
+QFrame#FindBar QLineEdit {{
+    padding: 6px 10px;
+    min-height: 24px;
+    font-size: {base_pt}pt;
+    border: 1px solid transparent;
+    background: transparent;
+}}
+
+QFrame#FindBar QLineEdit:focus {{
+    border: 1px solid {_ACCENT};
+    background: palette(base);
+}}
+
+QPushButton#FindBarNav, QPushButton#FindBarClose {{
+    padding: 4px 0;
+    min-height: 28px;
+    font-size: {base_pt}pt;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+}}
+
+QPushButton#FindBarNav:hover, QPushButton#FindBarClose:hover {{
+    background: palette(light);
+    border-color: palette(mid);
+}}
+
+QPushButton#FindBarClose {{
+    color: palette(dark);
+}}
+
+QLabel#FindBarCount {{
+    color: palette(dark);
+    font-size: {hint_pt}pt;
+    padding: 0 4px;
+}}
+
+QLabel#FindBarCount[state="error"] {{
+    color: #e85a5a;
+}}
 """
 
 
