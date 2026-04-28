@@ -134,6 +134,20 @@ _ZH: Final[dict[str, str]] = {
     "left": "剩余",
     "downloaded": "已下载",
     "Failed: {reason}": "已中断：{reason}",
+    "Retry": "重试",
+    "Retry download": "重新下载",
+    "Retrying…": "正在重试…",
+    "Cannot resume — re-trigger this download from the page.":
+        "无法续传 — 请在页面上重新触发该下载。",
+
+    # ---- Find on page -------------------------------------------------
+    "Find on page": "在页面中查找",
+    "Find": "查找",
+    "Find next": "查找下一个",
+    "Find previous": "查找上一个",
+    "Close find bar": "关闭查找栏",
+    "No matches": "无匹配",
+    "{active}/{total}": "{active}/{total}",
 
     # ---- Login prompts -----------------------------------------------
     "Email (leave empty to skip):": "邮箱（留空则跳过）:",

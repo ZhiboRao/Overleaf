@@ -19,7 +19,7 @@ import logging
 import time
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer, QUrl, Slot
+from PySide6.QtCore import Qt, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWebEngineCore import QWebEngineDownloadRequest
 from PySide6.QtWidgets import (
@@ -129,6 +129,12 @@ class DownloadItemWidget(QWidget):
     单个下载请求对应的卡片控件。
     """
 
+    # Emitted when the user explicitly dismisses this row (Cancel click).
+    # Lets the parent panel drop the card immediately instead of leaving
+    # a "Cancelled" placeholder behind.
+    # 用户点击取消时发射；让父面板立即移除卡片，而非留下"已取消"占位。
+    dismiss_requested = Signal()
+
     # Window for the rolling-average speed calculation; anything older is
     # dropped so the readout follows actual throughput fluctuations.
     # 计算滚动平均速度的窗口；更早的采样被丢弃，保证读数能反映真实变动。
@@ -198,6 +204,16 @@ class DownloadItemWidget(QWidget):
         self._reveal_button.clicked.connect(self._on_reveal)
         self._reveal_button.hide()
 
+        # Retry is only visible after a failed (interrupted) transfer; we
+        # surface it here rather than relying on the user to re-trigger the
+        # download from the page.
+        # 仅在下载中断后才显示"重试"，避免用户必须回到页面重新触发。
+        self._retry_button = QPushButton(i18n.t("Retry"))
+        self._retry_button.setObjectName("DownloadCardAction")
+        self._retry_button.setToolTip(i18n.t("Retry download"))
+        self._retry_button.clicked.connect(self._on_retry)
+        self._retry_button.hide()
+
         # -------- Top row: badge | name+path | percent --------
         name_box = QVBoxLayout()
         name_box.setContentsMargins(0, 0, 0, 0)
@@ -219,6 +235,7 @@ class DownloadItemWidget(QWidget):
         bottom_row.setContentsMargins(0, 0, 0, 0)
         bottom_row.setSpacing(10)
         bottom_row.addWidget(self._status_label, 1)
+        bottom_row.addWidget(self._retry_button)
         bottom_row.addWidget(self._cancel_button)
         bottom_row.addWidget(self._reveal_button)
 
@@ -328,6 +345,17 @@ class DownloadItemWidget(QWidget):
                 flavor="error",
             )
             self._cancel_button.hide()
+            # Always offer Retry; if the protocol can't resume, _on_retry
+            # surfaces the limitation rather than silently doing nothing.
+            # 失败后总是显示重试按钮；不可续传的情况由 _on_retry 给出反馈。
+            self._retry_button.show()
+        elif state == states.DownloadInProgress:
+            # Re-entered from a retry — restore the running-transfer chrome.
+            # 重试成功后回到进行中状态：恢复进度刷新与按钮可见性。
+            self._retry_button.hide()
+            self._cancel_button.show()
+            if not self._tick_timer.isActive():
+                self._tick_timer.start()
 
     def _set_status(self, text: str, *, flavor: str | None = None) -> None:
         self._status_label.setText(text)
@@ -339,7 +367,48 @@ class DownloadItemWidget(QWidget):
         style.polish(self._status_label)
 
     def _on_cancel(self) -> None:
+        # Tell Qt to abort the transfer, then ask the panel to drop us.
+        # The state-changed handler is still wired, but the panel removes
+        # this widget from its layout before Qt re-emits, so any late
+        # signal lands on a soon-to-be-deleted object harmlessly.
+        # 先让 Qt 中止下载，再请父面板把本卡片移除；Qt 后续 stateChanged
+        # 会落到即将销毁的对象上，但已被自动断开，无副作用。
         self._download.cancel()
+        self.dismiss_requested.emit()
+
+    def _on_retry(self) -> None:
+        """Resume an interrupted download, or explain why it can't resume.
+
+        续传一个已中断的下载；不可续传时给出明确说明。
+
+        Qt's ``QWebEngineDownloadRequest.resume()`` only works when the
+        server / protocol supports range requests (``isResumable()``).
+        For non-resumable transfers we don't silently do nothing — we
+        update the status text so the user knows to re-click the link
+        in the page.
+        Qt 的 ``resume()`` 仅在服务器/协议支持区间请求时有效；不可续
+        传时我们不静默失败，而是更新状态文字，引导用户回到页面重新
+        触发下载。
+        """
+        if not self._download.isResumable():
+            self._set_status(
+                i18n.t("Cannot resume — re-trigger this download from the "
+                       "page."),
+                flavor="error",
+            )
+            return
+        # Reset visible progress so the user sees the retry actually
+        # started; real values flow back in on the next tick.
+        # 重置进度展示，让用户感知到重试已发起；真实数值在下一次 tick 回填。
+        self._bytes_history.clear()
+        self._progress.setRange(0, 100)
+        self._progress.setValue(0)
+        self._percent_label.setText("0%")
+        self._set_status(i18n.t("Retrying…"))
+        self._download.resume()
+        # _on_state_changed will flip the buttons when Qt confirms the
+        # transition to DownloadInProgress, so we don't toggle them here.
+        # 按钮的切换交给 _on_state_changed 在状态真正进入"进行中"时处理。
 
     def _on_reveal(self) -> None:
         # openUrl on the parent directory opens a Finder window; the file
@@ -365,6 +434,8 @@ class DownloadItemWidget(QWidget):
         self._cancel_button.setText(i18n.t("Cancel"))
         self._reveal_button.setText(i18n.t("Show"))
         self._reveal_button.setToolTip(i18n.t("Reveal in Finder"))
+        self._retry_button.setText(i18n.t("Retry"))
+        self._retry_button.setToolTip(i18n.t("Retry download"))
 
 
 class DownloadsPanel(QDialog):
@@ -505,6 +576,12 @@ class DownloadsPanel(QDialog):
         为 ``download`` 创建一张卡片并把面板置前。
         """
         item = DownloadItemWidget(download, parent=self)
+        # Bind the dismiss signal to a per-item remover so the panel drops
+        # this card the moment the user clicks Cancel.
+        # 把"请求移除"信号绑定到本项的清理函数，用户一点取消即移除卡片。
+        item.dismiss_requested.connect(
+            lambda d=download: self._remove_item(d),
+        )
         self._items.append((download, item))
         # Insert at the top of the list (before the stretch spacer at -1).
         # 插入列表顶部（末尾 stretch 占位符之前）。
@@ -514,6 +591,23 @@ class DownloadsPanel(QDialog):
         self.show()
         self.raise_()
         self.activateWindow()
+
+    def _remove_item(
+        self, download: QWebEngineDownloadRequest,
+    ) -> None:
+        """Drop the card associated with ``download`` from the list.
+
+        把 ``download`` 对应的卡片从列表中移除。
+        """
+        for index, (dl, widget) in enumerate(self._items):
+            if dl is download:
+                self._items_layout.removeWidget(widget)
+                widget.deleteLater()
+                self._items.pop(index)
+                break
+        if not self._items:
+            self._scroll.hide()
+            self._empty_container.show()
 
     def _clear_completed(self) -> None:
         states = QWebEngineDownloadRequest.DownloadState

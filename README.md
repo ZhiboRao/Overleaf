@@ -17,10 +17,11 @@ Overleaf ships as a web app only. This project gives you a real Mac app — its 
   - `⌘R` Reload
   - `⌘,` Preferences
   - `⌘Q` Quit
+  - `⌘F` Find on page (Chrome-style floating overlay; `⌘G` / `⇧⌘G` next/prev, `Esc` to close)
   - Overleaf's own in-page shortcuts (`⌘↩` Recompile, etc.) keep working.
 - **In-window toolbar** with Back / Forward / Reload / Home / Downloads — readable font with configurable row height.
 - **Close-to-background** (like Claude Desktop / Slack) — the red traffic light hides the main window but keeps the app alive; clicking the Dock icon re-reveals it. `⌘Q` still truly quits.
-- **Downloads panel** — shares the same page-style chrome as Preferences (title + subtitle, SECTION label, divider, hint, footer button row) and lists active and completed downloads as Motrix-inspired cards with colored file-type badges, live speed / ETA, a progress bar, `Cancel`, and `Show in Finder`.
+- **Downloads panel** — shares the same page-style chrome as Preferences (title + subtitle, SECTION label, divider, hint, footer button row) and lists active and completed downloads as Motrix-inspired cards with colored file-type badges, live speed / ETA, a progress bar, `Cancel` (also removes the card from the list), `Retry` for interrupted transfers, and `Show in Finder`.
 - **Bilingual UI (English / 中文)** — a single **Language** preference (`Auto` follows the system locale / `English` / `中文`) retranslates the toolbar, menus, Preferences dialog, and Downloads panel live with no restart required. The same choice also switches the Overleaf mirror (`www` ↔ `cn`).
 - **Modern global stylesheet** — a single parameterized QSS sheet drives the whole app; sizes scale proportionally from a single base point size so everything (titles, tabs, download cards) stays in visual harmony.
 - **Appearance settings** — in Preferences you can tune:
@@ -92,6 +93,7 @@ src/overleaf_client/
 │   ├── shortcuts.py    # JS snippets that drive Overleaf's DOM
 │   ├── notifications.py# osascript + QSystemTrayIcon fallback
 │   ├── downloads.py    # Downloads panel (Preferences-style chrome + Motrix-inspired cards)
+│   ├── find_bar.py     # ⌘F find-on-page floating overlay
 │   ├── styles.py       # Global parameterized QSS stylesheet
 │   └── preferences.py  # iTerm-style tabbed preferences dialog
 └── platforms/mac/

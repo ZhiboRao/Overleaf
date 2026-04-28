@@ -11,7 +11,7 @@ from collections.abc import Callable
 from datetime import datetime
 
 from PySide6.QtCore import QSize, Qt, QTimer, QUrl, Slot
-from PySide6.QtGui import QAction, QCloseEvent, QIcon, QKeySequence
+from PySide6.QtGui import QAction, QCloseEvent, QIcon, QKeySequence, QResizeEvent
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
     QApplication,
@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QStatusBar,
     QSystemTrayIcon,
     QToolBar,
+    QWidget,
 )
 
 from overleaf_client import APP_NAME
@@ -38,12 +39,66 @@ from overleaf_client.core.credentials import Credential, CredentialStore
 from overleaf_client.core.network import NetworkMonitor
 from overleaf_client.platforms.mac.idle import seconds_since_last_input
 from overleaf_client.ui.downloads import DownloadsPanel
+from overleaf_client.ui.find_bar import FindBar
 from overleaf_client.ui.notifications import Notifier
 from overleaf_client.ui.preferences import PreferencesDialog
 from overleaf_client.ui.shortcuts import login_autofill_js
 from overleaf_client.ui.styles import apply_modern_style
 
 _LOGGER = logging.getLogger(__name__)
+
+
+class _FindOverlayContainer(QWidget):
+    """Central widget hosting the web view with a floating find bar.
+
+    中央容器：网页视图全填，查找栏作为浮层贴在右上角。
+
+    Layout is manual rather than via :class:`QVBoxLayout` so the find
+    bar can overlay the web view (Chrome-style) instead of pushing it
+    down. Resize events keep the bar pinned to the top-right corner.
+    手动管理布局而非使用 QVBoxLayout：让查找栏作为浮层覆盖在视图上方
+    （Chrome 风格），而不是把视图向下挤。resizeEvent 负责把浮层固定
+    在右上角。
+    """
+
+    # Distance (px) the floating bar keeps from the top / right edges.
+    # 浮层与上/右边界的间距（像素）。
+    _BAR_MARGIN = 14
+
+    def __init__(
+        self,
+        view: QWebEngineView,
+        find_bar: QWidget,
+        parent: QWidget | None = None,
+    ) -> None:
+        """Initialize the container with ``view`` filling and ``find_bar`` floating."""
+        super().__init__(parent)
+        self._view = view
+        self._find_bar = find_bar
+        view.setParent(self)
+        find_bar.setParent(self)
+        # Raise so the overlay paints above the web view in Z-order.
+        # raise_() 保证浮层在网页视图之上。
+        find_bar.raise_()
+
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
+        """Resize the view to fill and pin the find bar to the top-right.
+
+        让视图占满容器，同时把浮层固定在右上角。
+        """
+        super().resizeEvent(event)
+        self._view.setGeometry(0, 0, self.width(), self.height())
+        self._reposition_overlay()
+
+    def _reposition_overlay(self) -> None:
+        bar = self._find_bar
+        # adjustSize() respects FindBar's fixed width and intrinsic height
+        # so the bar's box stays the same regardless of container size.
+        # adjustSize() 沿用 FindBar 的固定宽度与内在高度，浮层尺寸不会
+        # 随容器变化。
+        bar.adjustSize()
+        x = self.width() - bar.width() - self._BAR_MARGIN
+        bar.move(max(self._BAR_MARGIN, x), self._BAR_MARGIN)
 
 
 class MainWindow(QMainWindow):
@@ -113,7 +168,17 @@ class MainWindow(QMainWindow):
         self._page = OverleafPage(profile, self._view)
         self._view.setPage(self._page)
         self._view.setZoomFactor(config_manager.config.zoom_factor)
-        self.setCentralWidget(self._view)
+
+        # Chrome-style: web view fills the central area; the find bar
+        # floats as a card pinned to the top-right via the overlay
+        # container's resizeEvent.
+        # Chrome 风格：网页视图填满中央区域，查找栏作为右上角浮层卡片，
+        # 由容器的 resizeEvent 负责定位。
+        self._find_bar = FindBar(self._view, parent=self)
+        self._central = _FindOverlayContainer(
+            self._view, self._find_bar, parent=self,
+        )
+        self.setCentralWidget(self._central)
 
         self._tray = QSystemTrayIcon(app_icon, self)
         self._tray.setToolTip(APP_NAME)
@@ -159,8 +224,10 @@ class MainWindow(QMainWindow):
         self._refresh_status_clocks()
 
         self._toolbar_actions: list[tuple[QAction, str, str]] = []
+        self._find_actions: list[tuple[QAction, str]] = []
         self._toolbar = self._build_toolbar()
         self.addToolBar(Qt.ToolBarArea.TopToolBarArea, self._toolbar)
+        self._install_find_shortcuts()
 
         self._monitor = NetworkMonitor(
             config_manager.config.home_url, parent=self,
@@ -231,6 +298,45 @@ class MainWindow(QMainWindow):
         panel.show()
         panel.raise_()
         panel.activateWindow()
+
+    # --------------------------------------------------------- Find on page
+    def _install_find_shortcuts(self) -> None:
+        """Register ⌘F / ⌘G / ⇧⌘G to drive the find bar.
+
+        注册 ⌘F / ⌘G / ⇧⌘G 三组快捷键以驱动查找栏。
+
+        Actions are added to the window itself (not just the toolbar) so
+        the shortcuts fire even when focus is inside the QWebEngineView.
+        把 QAction 直接挂在窗口上（而非工具栏），即便焦点在网页视图中
+        也能触发。
+        """
+        find_action = QAction(i18n.t("Find"), self)
+        find_action.setShortcut(QKeySequence(QKeySequence.StandardKey.Find))
+        find_action.triggered.connect(self._find_bar.open)
+        self.addAction(find_action)
+
+        next_action = QAction(i18n.t("Find next"), self)
+        next_action.setShortcut(
+            QKeySequence(QKeySequence.StandardKey.FindNext),
+        )
+        next_action.triggered.connect(self._find_bar.find_next)
+        self.addAction(next_action)
+
+        prev_action = QAction(i18n.t("Find previous"), self)
+        prev_action.setShortcut(
+            QKeySequence(QKeySequence.StandardKey.FindPrevious),
+        )
+        prev_action.triggered.connect(self._find_bar.find_previous)
+        self.addAction(prev_action)
+
+        # Track these so retranslate() can refresh their menu-visible
+        # labels alongside the toolbar actions.
+        # 一并记录，方便 retranslate() 刷新菜单可见的文案。
+        self._find_actions.extend([
+            (find_action, "Find"),
+            (next_action, "Find next"),
+            (prev_action, "Find previous"),
+        ])
 
     # ------------------------------------------------------------- Callbacks
     @Slot(bool)
@@ -360,6 +466,9 @@ class MainWindow(QMainWindow):
         for action, label_key, tooltip_key in self._toolbar_actions:
             action.setText(i18n.t(label_key))
             action.setToolTip(i18n.t(tooltip_key))
+        for action, label_key in self._find_actions:
+            action.setText(i18n.t(label_key))
+        self._find_bar.retranslate()
         # The work-time prefix ("Work" / "工作") must follow the new
         # language immediately rather than wait for the next tick.
         # 工作时间前缀立刻随新语言更新，不必等下一次 tick。
