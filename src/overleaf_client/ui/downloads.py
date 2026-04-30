@@ -20,7 +20,15 @@ import time
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, QUrl, Signal, Slot
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtGui import (
+    QDesktopServices,
+    QHideEvent,
+    QMouseEvent,
+    QPainter,
+    QPaintEvent,
+    QResizeEvent,
+    QShowEvent,
+)
 from PySide6.QtWebEngineCore import QWebEngineDownloadRequest
 from PySide6.QtWidgets import (
     QDialog,
@@ -30,6 +38,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -94,6 +103,162 @@ def _format_duration(seconds: int) -> str:
     hours = seconds // 3600
     mins = (seconds % 3600) // 60
     return f"{hours}h {mins}m"
+
+
+class MarqueeLabel(QLabel):
+    """Single-line label that horizontally scrolls overflowing text.
+
+    单行水平滚动展示超长文字的标签。
+
+    Long filenames otherwise force the download card wider than the
+    panel itself; instead of clipping or wrapping, this label keeps the
+    card at a fixed width and slides the text left at a constant rate
+    so the user can still read the whole name.
+    长文件名会把下载卡片撑得比面板还宽。这里用横向 ``Ignored`` 尺寸
+    策略让父布局决定可用宽度，超出部分以匀速向左滚动并循环展示，
+    既不裁切也不折行。
+    """
+
+    # Repaint rate / step for the scroll animation. ~33 fps with a 1-pixel
+    # step gives a smooth, calm slide that doesn't compete with progress
+    # bar updates for attention.
+    # 滚动动画的刷新频率/步长：约 33 fps、每次推进 1 像素，平滑而克制，
+    # 不会与进度条争夺注意力。
+    _SCROLL_INTERVAL_MS = 30
+    _SCROLL_PIXELS_PER_TICK = 1
+    # Visual gap between the trailing copy and the leading copy of the
+    # text, so the loop point reads as a natural pause rather than the
+    # text suddenly jumping back.
+    # 上一份文字结尾与下一份开头之间的视觉空隙，让循环点像自然停顿，
+    # 而不是文字突然跳回开头。
+    _LOOP_GAP_PX = 40
+    # Static dwell at the loop start (and after every full revolution)
+    # so the user has a moment to read the beginning of the name before
+    # it starts sliding. Counted in timer ticks.
+    # 每轮循环开始时的静止停留时间（以 timer tick 计），让用户先看清
+    # 文件名开头，再开始滚动。
+    _PAUSE_TICKS = 50
+
+    def __init__(
+        self, text: str = "", parent: QWidget | None = None,
+    ) -> None:
+        """Initialize the label with ``text``.
+
+        以 ``text`` 初始化标签。
+        """
+        super().__init__(text, parent)
+        self._offset = 0
+        self._pause_remaining = self._PAUSE_TICKS
+        self._timer = QTimer(self)
+        self._timer.setInterval(self._SCROLL_INTERVAL_MS)
+        self._timer.timeout.connect(self._advance)
+        # ``Ignored`` horizontally so the layout never grows the card to
+        # fit the full text width; vertical hint stays so the row keeps
+        # its natural height.
+        # 横向 ``Ignored`` 让布局不再按文字完整宽度撑开卡片；纵向保留
+        # 默认策略，行高仍按字体自然计算。
+        self.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred,
+        )
+
+    # ---- Public API ---------------------------------------------------- #
+    def setText(self, text: str) -> None:  # noqa: N802
+        """Set the displayed text and reset the scroll position.
+
+        设置显示文字并重置滚动位置。
+        """
+        super().setText(text)
+        self._reset_scroll()
+        self._sync_timer()
+
+    # ---- Qt event hooks ----------------------------------------------- #
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
+        """Re-evaluate scrolling whenever the available width changes.
+
+        宽度变化时重新判断是否需要滚动。
+        """
+        super().resizeEvent(event)
+        self._sync_timer()
+
+    def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
+        """Start the scroll timer once the label becomes visible.
+
+        标签变为可见时启动滚动计时。
+        """
+        super().showEvent(event)
+        self._sync_timer()
+
+    def hideEvent(self, event: QHideEvent) -> None:  # noqa: N802
+        """Stop the timer while hidden so we don't burn idle frames.
+
+        隐藏期间停止计时，避免在不可见时空耗刷新。
+        """
+        super().hideEvent(event)
+        self._timer.stop()
+
+    def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
+        """Paint static text when it fits, scrolling copies otherwise.
+
+        文字未溢出时按 QLabel 默认样式绘制；溢出时绘制循环副本。
+        """
+        if not self._overflows():
+            # Fits the available width: defer to QLabel so QSS styling
+            # (font, color, background) renders exactly as before.
+            # 不超出宽度时交给 QLabel 默认绘制，保留 QSS 字体/颜色/背景。
+            super().paintEvent(event)
+            return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing, True)
+        painter.setFont(self.font())
+        painter.setPen(self.palette().color(self.foregroundRole()))
+        rect = self.rect()
+        text = self.text()
+        text_w = self._text_width()
+        loop_w = text_w + self._LOOP_GAP_PX
+        x = -self._offset
+        flags = (
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
+        # Draw enough copies to fill from the current offset to the right
+        # edge so the loop seam is never blank.
+        # 从当前偏移开始绘制到右边界，保证循环接缝处不会出现空白。
+        while x < rect.width():
+            painter.drawText(x, 0, text_w, rect.height(), flags, text)
+            x += loop_w
+
+    # ---- Internals ---------------------------------------------------- #
+    def _text_width(self) -> int:
+        return self.fontMetrics().horizontalAdvance(self.text())
+
+    def _overflows(self) -> bool:
+        return self._text_width() > self.width()
+
+    def _reset_scroll(self) -> None:
+        self._offset = 0
+        self._pause_remaining = self._PAUSE_TICKS
+        self.update()
+
+    def _sync_timer(self) -> None:
+        if self._overflows() and self.isVisible():
+            if not self._timer.isActive():
+                self._timer.start()
+        elif self._timer.isActive():
+            self._timer.stop()
+            self._reset_scroll()
+
+    def _advance(self) -> None:
+        if self._pause_remaining > 0:
+            self._pause_remaining -= 1
+            return
+        loop_w = self._text_width() + self._LOOP_GAP_PX
+        self._offset += self._SCROLL_PIXELS_PER_TICK
+        if self._offset >= loop_w:
+            # Completed a full revolution — pause briefly before sliding
+            # again so the start of the name is readable each cycle.
+            # 完成一轮循环后停顿一下，让用户每轮都能看清文件名开头。
+            self._offset = 0
+            self._pause_remaining = self._PAUSE_TICKS
+        self.update()
 
 
 class FileTypeBadge(QLabel):
@@ -167,17 +332,27 @@ class DownloadItemWidget(QWidget):
 
         self._badge = FileTypeBadge(download.downloadFileName(), parent=self)
 
-        self._name_label = QLabel(download.downloadFileName())
+        # Filename uses the marquee label: long names slide horizontally
+        # inside the available width instead of stretching the card past
+        # the panel edge. Text selection is dropped because we now use
+        # double-click on the card to open the finished file — letting
+        # the label intercept the click would shadow that affordance.
+        # 文件名用滚动标签：超长名字在可用宽度内水平滑动，不再把卡片
+        # 撑到面板之外。同时去掉文字可选交互，因为完成的下载现在通过
+        # 双击卡片打开，否则文字选中会拦截双击事件。
+        self._name_label = MarqueeLabel(download.downloadFileName())
         self._name_label.setObjectName("DownloadCardName")
-        self._name_label.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse,
-        )
         self._name_label.setToolTip(str(self._target_path))
 
         self._path_label = QLabel(str(self._target_path.parent))
         self._path_label.setObjectName("DownloadCardPath")
-        self._path_label.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse,
+        # Same horizontal policy as the name label so a long parent path
+        # (e.g. a deeply nested custom downloads folder) cannot grow the
+        # card either; QLabel will clip on the right when needed.
+        # 与文件名相同的横向策略：避免父目录路径过长再次撑宽卡片，
+        # 必要时由 QLabel 自行在右侧裁切。
+        self._path_label.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred,
         )
 
         self._percent_label = QLabel("0%")
@@ -330,6 +505,10 @@ class DownloadItemWidget(QWidget):
             )
             self._cancel_button.hide()
             self._reveal_button.show()
+            # Hint that the whole card is now actionable: double-click
+            # opens the file in the default app.
+            # 提示整张卡片此时可交互：双击会在默认应用中打开文件。
+            self.setCursor(Qt.CursorShape.PointingHandCursor)
         elif state == states.DownloadCancelled:
             self._progress.setRange(0, 100)
             self._progress.setValue(0)
@@ -420,6 +599,30 @@ class DownloadItemWidget(QWidget):
             QUrl.fromLocalFile(str(self._target_path.parent)),
         )
 
+    def mouseDoubleClickEvent(  # noqa: N802
+        self, event: QMouseEvent,
+    ) -> None:
+        """Open the file when the user double-clicks a finished card.
+
+        用户双击已完成的卡片时直接打开文件。
+
+        Only acts after the transfer has completed successfully and the
+        target path still exists on disk; otherwise falls back to Qt's
+        default behavior so events on child controls (buttons, progress
+        bar) keep their normal handling.
+        仅在下载完成且目标文件仍存在时生效；其它状态交由 Qt 默认处理，
+        避免影响按钮、进度条等子控件的双击行为。
+        """
+        states = QWebEngineDownloadRequest.DownloadState
+        completed = self._download.state() == states.DownloadCompleted
+        if completed and self._target_path.exists():
+            QDesktopServices.openUrl(
+                QUrl.fromLocalFile(str(self._target_path)),
+            )
+            event.accept()
+            return
+        super().mouseDoubleClickEvent(event)
+
     def retranslate(self) -> None:
         """Re-apply translations to the static labels on this card.
 
@@ -493,13 +696,15 @@ class DownloadsPanel(QDialog):
         self._scroll = QScrollArea()
         self._scroll.setWidget(container)
         # ``WidgetResizable`` lets the inner column stretch to the viewport
-        # width while still respecting the cards' own minimum sizes.
-        # WidgetResizable 让内容宽度跟随 viewport，但卡片的最小宽度仍被
-        # 尊重：超宽文件名会触发水平滚动条而不是被悄悄裁掉。
+        # width. Cards now keep themselves within that width (filenames
+        # use a marquee label and the path label uses an ``Ignored``
+        # size policy), so a horizontal scrollbar is no longer needed.
+        # WidgetResizable 让内容宽度跟随 viewport；卡片现在通过滚动文件
+        # 名和忽略路径横向尺寸来适配宽度，不再需要水平滚动条。
         self._scroll.setWidgetResizable(True)
         self._scroll.setFrameShape(QScrollArea.Shape.NoFrame)
         self._scroll.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAsNeeded,
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
         )
         self._scroll.setVerticalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAsNeeded,
